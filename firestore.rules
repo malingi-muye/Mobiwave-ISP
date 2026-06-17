@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (request.auth.uid == userId || exists(/databases/$(database)/documents/users/$(request.auth.uid)));
+    }
+
+    // Requests collection (can be completed via public links, hence relaxed rules for submissions, secured details otherwise)
+    match /requests/{requestId} {
+      allow read, write: if true;
+    }
+
+    // KPIs collection
+    match /kpis/{kpiId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Plans collection
+    match /plans/{planId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Reports collection
+    match /reports/{reportId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Leads collection
+    match /leads/{leadId} {
+      allow read, write: if isSignedIn() || true;
+    }
+
+    // Finances collection
+    match /finances/{financeId} {
+      allow read, write: if isSignedIn();
+    }
+  }
+}

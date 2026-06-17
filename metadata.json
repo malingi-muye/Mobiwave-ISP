@@ -1,0 +1,6 @@
+{
+  "name": "Mobiwave ISP",
+  "description": "A Google Workspace and Firebase connected request tracking, KPI performance, and reseller portal for internet connectivity lead collections in the Mobiwave ISP network.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

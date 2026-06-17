@@ -1,0 +1,123 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account information with roles and Coast region areas",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "management", "reseller"] },
+        "area": { "type": "string", "description": "Allocated area within Coast region, e.g. Mombasa, Malindi, Kilifi, Kwale, Lamu, Tana River" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Request": {
+      "title": "Financial Support Request",
+      "description": "Funds request forms filled by recipients, approved by Admin, and signed as receipt on payment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "recipientEmail": { "type": "string" },
+        "recipientName": { "type": "string" },
+        "amount": { "type": "number" },
+        "purpose": { "type": "string" },
+        "biweeklyPeriod": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string" },
+        "approvedAt": { "type": "string" },
+        "signedReceipt": { "type": "boolean" },
+        "signedAt": { "type": "string" },
+        "receiptDriveFileId": { "type": "string" }
+      },
+      "required": ["id", "recipientEmail", "amount", "purpose", "status", "createdAt"]
+    },
+    "Kpi": {
+      "title": "KPI Target",
+      "description": "Targets and actual performance tracking details allocated to resellers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "resellerId": { "type": "string" },
+        "resellerName": { "type": "string" },
+        "kpiName": { "type": "string" },
+        "targetValue": { "type": "number" },
+        "currentValue": { "type": "number" },
+        "period": { "type": "string" }
+      },
+      "required": ["id", "resellerId", "kpiName", "targetValue", "currentValue", "period"]
+    },
+    "Plan": {
+      "title": "Weekly Reseller Plan",
+      "description": "Weekly plan of activities inputted by resellers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "resellerId": { "type": "string" },
+        "weekStartDate": { "type": "string" },
+        "objective": { "type": "string" },
+        "tasks": { "type": "string", "description": "Comma separated or JSON string of weekly activities" }
+      },
+      "required": ["id", "resellerId", "weekStartDate", "objective"]
+    },
+    "Report": {
+      "title": "Weekly Status Report",
+      "description": "Status reports submitted by resellers for management review",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "resellerId": { "type": "string" },
+        "weekStartDate": { "type": "string" },
+        "achievements": { "type": "string" },
+        "challenges": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "pending_review", "reviewed"] },
+        "submittedAt": { "type": "string" },
+        "feedback": { "type": "string" }
+      },
+      "required": ["id", "resellerId", "weekStartDate", "achievements", "challenges", "status"]
+    },
+    "Lead": {
+      "title": "Internet Connection Lead",
+      "description": "Leads collected by resellers showing connection achievements",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "resellerId": { "type": "string" },
+        "resellerName": { "type": "string" },
+        "clientName": { "type": "string" },
+        "location": { "type": "string" },
+        "institution": { "type": "string" },
+        "contactNumber": { "type": "string" },
+        "revenueCollected": { "type": "number" },
+        "dateAdded": { "type": "string" }
+      },
+      "required": ["id", "resellerId", "clientName", "location", "contactNumber", "revenueCollected", "dateAdded"]
+    },
+    "Finance": {
+      "title": "Financial Record",
+      "description": "Information on biweekly financial support and end-of-month commissions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "resellerId": { "type": "string" },
+        "resellerName": { "type": "string" },
+        "type": { "type": "string", "enum": ["biweekly_support", "monthly_commission"] },
+        "amount": { "type": "number" },
+        "period": { "type": "string" },
+        "status": { "type": "string", "enum": ["paid", "pending"] },
+        "date": { "type": "string" }
+      },
+      "required": ["id", "resellerId", "type", "amount", "period", "status", "date"]
+    }
+  },
+  "firestore": {
+    "users": { "schema": "User", "description": "User role registrations" },
+    "requests": { "schema": "Request", "description": "Support funds requests" },
+    "kpis": { "schema": "Kpi", "description": "Assigned KPIs and progress" },
+    "plans": { "schema": "Plan", "description": "Weekly plan documents" },
+    "reports": { "schema": "Report", "description": "Weekly status reports" },
+    "leads": { "schema": "Lead", "description": "Leads of internet hookups" },
+    "finances": { "schema": "Finance", "description": "Finances mapping payouts of commissions & support" }
+  }
+}
