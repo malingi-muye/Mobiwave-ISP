@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, googleSignIn, logoutUser } from './lib/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { User } from 'firebase/auth';
 import { UserRole, UserProfile } from './types';
 import AdminView from './components/AdminView';
@@ -70,11 +70,15 @@ export default function App() {
 
   const loadUserProfile = async (currentUser: User) => {
     try {
+      const userEmail = currentUser.email?.toLowerCase().trim() || '';
+
+      // 1. Try to find user profile by real UID first
       const docRef = doc(db, 'users', currentUser.uid);
       const docSnap = await getDoc(docRef);
+
       if (docSnap.exists()) {
         const data = docSnap.data() as UserProfile;
-        const isAdminEmail = currentUser.email?.toLowerCase() === 'malingib9@gmail.com';
+        const isAdminEmail = userEmail === 'malingib9@gmail.com';
         if (isAdminEmail && data.role !== 'admin') {
           data.role = 'admin';
           const { updateDoc } = await import('firebase/firestore');
@@ -83,21 +87,45 @@ export default function App() {
         setProfile(data);
         setSimulatedRole(data.role);
       } else {
-        // Automatically provision profile for new logins
-        // Default to 'admin' if email is malingib9@gmail.com, otherwise reseller
-        const isAdminEmail = currentUser.email?.toLowerCase() === 'malingib9@gmail.com';
-        const defaultRole: UserRole = isAdminEmail ? 'admin' : 'reseller';
-        const newProfile: UserProfile = {
-          uid: currentUser.uid,
-          email: currentUser.email || '',
-          displayName: currentUser.displayName || 'Coastal Agent',
-          role: defaultRole,
-          area: 'Mombasa' // Default active area
-        };
+        // 2. Check if there is a pre-registered profile with a pseudo UID matching this email
+        const usersQuery = query(collection(db, 'users'), where('email', '==', userEmail));
+        const querySnap = await getDocs(usersQuery);
 
-        await setDoc(docRef, newProfile);
-        setProfile(newProfile);
-        setSimulatedRole(defaultRole);
+        if (!querySnap.empty) {
+          const preRegDoc = querySnap.docs[0];
+          const preRegData = preRegDoc.data() as UserProfile;
+
+          // Delete old temporary pseudo-UID document if it is different
+          if (preRegDoc.id !== currentUser.uid) {
+            await deleteDoc(doc(db, 'users', preRegDoc.id));
+          }
+
+          // Move/save under the actual authenticated user UID
+          const mergedProfile: UserProfile = {
+            ...preRegData,
+            uid: currentUser.uid,
+            displayName: currentUser.displayName || preRegData.displayName || 'Coastal Agent',
+          };
+
+          await setDoc(doc(db, 'users', currentUser.uid), mergedProfile);
+          setProfile(mergedProfile);
+          setSimulatedRole(mergedProfile.role);
+        } else {
+          // 3. No pre-registry found, auto-provision fresh default account
+          const isAdminEmail = userEmail === 'malingib9@gmail.com';
+          const defaultRole: UserRole = isAdminEmail ? 'admin' : 'reseller';
+          const newProfile: UserProfile = {
+            uid: currentUser.uid,
+            email: userEmail,
+            displayName: currentUser.displayName || 'Coastal Agent',
+            role: defaultRole,
+            area: 'Mombasa' // Default active area
+          };
+
+          await setDoc(docRef, newProfile);
+          setProfile(newProfile);
+          setSimulatedRole(defaultRole);
+        }
       }
     } catch (err) {
       console.error("Failed to sync user profile", err);

@@ -320,7 +320,44 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
       };
 
       await setDoc(doc(db, 'users', pseudoUid), newProfile);
-      setSuccess(`User registration logged: ${signupName} added as ${signupRole}!`);
+
+      // Send Workspace Invitation & Identity Verification Email
+      await sendGmailEmail(
+        newProfile.email,
+        `Mobiwave ISP Portal: Authorized Workspace Invitation`,
+        `<h3>Welcome to the Mobiwave ISP Lead Procurement Matrix, ${newProfile.displayName}!</h3>
+         <p>Your administrative coordinator has provisioned and authorized your account on our portal:</p>
+         <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-family: sans-serif; font-size: 13px;">
+           <tr style="background-color: #f8fafc;">
+             <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: bold; width: 150px;">Access Role:</td>
+             <td style="padding: 8px 12px; border: 1px solid #e2e8f0; text-transform: capitalize;">${newProfile.role}</td>
+           </tr>
+           ${newProfile.area ? `
+           <tr>
+             <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: bold;">Allocated Sector:</td>
+             <td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${newProfile.area}</td>
+           </tr>
+           ` : ''}
+           <tr style="background-color: #f8fafc;">
+             <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: bold;">Registered Email:</td>
+             <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-family: monospace;">${newProfile.email}</td>
+           </tr>
+         </table>
+         <p>To verify your identity and access your dashboard, click the registration validation button below and sign in using your Google account:</p>
+         <p style="margin: 28px 0;">
+           <a href="${window.location.origin}" style="display: inline-block; padding: 12px 24px; background-color: #4f46e5; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 13px; box-shadow: 0 2px 4px rgba(79, 70, 229, 0.15);">
+             Verify Identity & Enter Workspace
+           </a>
+         </p>
+         <p style="color: #64748b; font-size: 11px; line-height: 1.5; border-top: 1px solid #f1f5f9; padding-top: 12px; margin-top: 24px;">
+           <strong>Verification notice:</strong> Ensuring workspace integrity requires performing a standard matching process on your first sign-in using your verified Google credentials. If you experience authentication conflicts, please reach out to your IT Admin Coordinator.
+         </p>
+         <p style="font-size: 13px;">Best regards,<br/>Mobiwave ISP Systems Administration Desk</p>`
+      ).catch((mailErr) => {
+        console.warn('Gmail invitation notification deferred', mailErr);
+      });
+
+      setSuccess(`User registration logged & invitation email dispatched for ${signupName} as ${signupRole}!`);
       setSignupName('');
       setSignupEmail('');
       await fetchAdminData();
