@@ -8,6 +8,7 @@ export interface UserProfile {
   displayName: string;
   role: UserRole;
   area?: CoastArea;
+  password?: string; // Standard bypass access password
 }
 
 export interface FundsRequest {

@@ -311,14 +311,16 @@ export default function ManagementView({ currentUser }: ManagementViewProps) {
           <div className="flex justify-between items-start">
             <span className="text-[11px] font-medium text-slate-500 tracking-tight">Total Revenue Managed</span>
             <span className="text-[9px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200/50 font-bold flex items-center gap-0.5">
-              +12.5%
+              Live
             </span>
           </div>
           <div className="mt-4">
             <h3 className="text-2xl font-bold tracking-tight text-slate-900 font-mono">
               KES {leads.reduce((s,l)=>s+l.revenueCollected, 0).toLocaleString()}
             </h3>
-            <p className="text-[10px] text-slate-450 mt-1 font-medium">Trending up this month</p>
+            <p className="text-[10px] text-slate-450 mt-1 font-medium">
+              {leads.length === 0 ? 'No revenue transactions recorded' : 'Total sales value accrued'}
+            </p>
           </div>
         </div>
 
@@ -327,14 +329,16 @@ export default function ManagementView({ currentUser }: ManagementViewProps) {
           <div className="flex justify-between items-start">
             <span className="text-[11px] font-medium text-slate-500 tracking-tight">Acquisition Specialities</span>
             <span className="text-[9px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full border border-amber-200/50 font-bold">
-              Active
+              Directory
             </span>
           </div>
           <div className="mt-4">
             <h3 className="text-2xl font-bold tracking-tight text-slate-900">
               {resellers.length} Field Agents
             </h3>
-            <p className="text-[10px] text-slate-450 mt-1 font-medium">Acquisition exceeds targets</p>
+            <p className="text-[10px] text-slate-450 mt-1 font-medium">
+              {resellers.length === 0 ? 'No regional field agents' : 'Configured agent affiliates'}
+            </p>
           </div>
         </div>
 
@@ -343,14 +347,16 @@ export default function ManagementView({ currentUser }: ManagementViewProps) {
           <div className="flex justify-between items-start">
             <span className="text-[11px] font-medium text-slate-500 tracking-tight">Leads Registered</span>
             <span className="text-[9px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-200/50 font-bold">
-              +45.2%
+              Database
             </span>
           </div>
           <div className="mt-4">
             <h3 className="text-2xl font-bold tracking-tight text-slate-900 font-mono">
               {leads.length} Hookups
             </h3>
-            <p className="text-[10px] text-slate-450 mt-1 font-medium">Verified in cloud nodes</p>
+            <p className="text-[10px] text-slate-450 mt-1 font-medium">
+              {leads.length === 0 ? 'No leads submitted' : 'Registered client networks'}
+            </p>
           </div>
         </div>
 
@@ -370,7 +376,7 @@ export default function ManagementView({ currentUser }: ManagementViewProps) {
             <h3 className="text-2xl font-bold tracking-tight text-slate-900">
               {reports.filter(r => r.status === 'pending_review').length} Reviews
             </h3>
-            <p className="text-[10px] text-slate-450 mt-1 font-medium">Mentorship feedback active</p>
+            <p className="text-[10px] text-slate-450 mt-1 font-medium">Mentorship reviews pending action</p>
           </div>
         </div>
 

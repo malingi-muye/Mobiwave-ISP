@@ -32,6 +32,9 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
   const [signupName, setSignupName] = useState('');
   const [signupRole, setSignupRole] = useState<UserRole>('reseller');
   const [signupArea, setSignupArea] = useState<CoastArea>('Mombasa');
+  const [signupPassword, setSignupPassword] = useState(() => {
+    return 'MBW-' + Math.floor(1000 + Math.random() * 9000).toString();
+  });
 
   // Manual payment state
   const [selectedResId, setSelectedResId] = useState('');
@@ -311,12 +314,14 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
     setSuccess(null);
     try {
       const pseudoUid = 'user_' + Math.random().toString(36).substring(2, 9);
+      const chosenPass = signupPassword.trim() || ('MBW-' + Math.floor(1000 + Math.random() * 9000).toString());
       const newProfile: UserProfile = {
         uid: pseudoUid,
         email: signupEmail.toLowerCase().trim(),
         displayName: signupName,
         role: signupRole,
-        area: signupRole === 'reseller' ? signupArea : null
+        area: signupRole === 'reseller' ? signupArea : null,
+        password: chosenPass
       };
 
       await setDoc(doc(db, 'users', pseudoUid), newProfile);
@@ -324,9 +329,10 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
       // Send Workspace Invitation & Identity Verification Email
       await sendGmailEmail(
         newProfile.email,
-        `Mobiwave ISP Portal: Authorized Workspace Invitation`,
+        `Mobiwave ISP Portal: Authorized Workspace Access Credentials`,
         `<h3>Welcome to the Mobiwave ISP Lead Procurement Matrix, ${newProfile.displayName}!</h3>
          <p>Your administrative coordinator has provisioned and authorized your account on our portal:</p>
+         
          <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-family: sans-serif; font-size: 13px;">
            <tr style="background-color: #f8fafc;">
              <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: bold; width: 150px;">Access Role:</td>
@@ -342,24 +348,42 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
              <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: bold;">Registered Email:</td>
              <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-family: monospace;">${newProfile.email}</td>
            </tr>
+           <tr>
+             <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: bold; color: #4f46e5;">Access Passcode:</td>
+             <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-family: monospace; font-weight: bold; color: #4f46e5;">${chosenPass}</td>
+           </tr>
          </table>
-         <p>To verify your identity and access your dashboard, click the registration validation button below and sign in using your Google account:</p>
-         <p style="margin: 28px 0;">
-           <a href="${window.location.origin}" style="display: inline-block; padding: 12px 24px; background-color: #4f46e5; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 13px; box-shadow: 0 2px 4px rgba(79, 70, 229, 0.15);">
-             Verify Identity & Enter Workspace
+
+         <h4 style="color: #1e1b4b; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-top: 24px;">🔑 Dynamic Sign-In Methods</h4>
+         
+         <p><strong>Option 1 (Direct SSO Bypass):</strong></p>
+         <p>If you experience any "Google verification / testing block" or generic Google 403 sign-in restrictions, open the portal and select the <strong>"Registered Affiliate Bypasser"</strong> option. Enter your registered email and your unique access passcode:</p>
+         <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #4f46e5; padding: 12px; margin: 12px 0; font-family: monospace; font-size: 14px; border-radius: 4px;">
+           Email: <strong>${newProfile.email}</strong><br/>
+           Access Passcode: <strong>${chosenPass}</strong>
+         </div>
+
+         <p><strong>Option 2 (Google Auth SSO):</strong></p>
+         <p>You may also click the verification button below to authorize using your Google account directly (only if your account has been added to the developer's approved list of testers):</p>
+         <p style="margin: 20px 0;">
+           <a href="${window.location.origin}" style="display: inline-block; padding: 10px 20px; background-color: #4f46e5; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px;">
+             Verify Identity & Enter Portal
            </a>
          </p>
+         
          <p style="color: #64748b; font-size: 11px; line-height: 1.5; border-top: 1px solid #f1f5f9; padding-top: 12px; margin-top: 24px;">
-           <strong>Verification notice:</strong> Ensuring workspace integrity requires performing a standard matching process on your first sign-in using your verified Google credentials. If you experience authentication conflicts, please reach out to your IT Admin Coordinator.
+           <strong>Notice to Field Representatives:</strong> Portal credentials and access keys are sensitive. Safe usage protocols match standard enterprise policies. If you have any inquiries, contact the desk coordinator.
          </p>
          <p style="font-size: 13px;">Best regards,<br/>Mobiwave ISP Systems Administration Desk</p>`
       ).catch((mailErr) => {
         console.warn('Gmail invitation notification deferred', mailErr);
       });
 
-      setSuccess(`User registration logged & invitation email dispatched for ${signupName} as ${signupRole}!`);
+      setSuccess(`User registered & access credentials email dispatched for ${signupName} with passcode: ${chosenPass}!`);
       setSignupName('');
       setSignupEmail('');
+      // Regenerate randomized passcode for the next registrant
+      setSignupPassword('MBW-' + Math.floor(1000 + Math.random() * 9000).toString());
       await fetchAdminData();
     } catch (err: any) {
       console.error(err);
@@ -615,6 +639,7 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
                   <th className="pb-3 text-slate-500">Google Email</th>
                   <th className="pb-3 text-slate-500">Workspace Access Role</th>
                   <th className="pb-3 text-slate-500">Allocated Division Sector</th>
+                  <th className="pb-3 text-slate-500">Bypass Passcode</th>
                   <th className="pb-3 text-slate-500 text-right">Actions</th>
                 </tr>
               </thead>
@@ -685,6 +710,9 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
                             {p.role === 'reseller' ? (p.area || 'Mombasa') : 'Global'}
                           </span>
                         )}
+                      </td>
+                      <td className="py-3.5 font-mono text-indigo-650 font-extrabold text-xs">
+                        {p.password || '—'}
                       </td>
                       <td className="py-3.5 text-right">
                         <div className="flex gap-2 justify-end items-center">
@@ -808,6 +836,28 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
                   </select>
                 </div>
               )}
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-500 mb-1">Dedicated Bypass Passcode (Google Auth Override)</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. MBW-4821"
+                  value={signupPassword}
+                  onChange={(e) => setSignupPassword(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none font-mono font-bold text-indigo-600 bg-indigo-50/20"
+                />
+                <button
+                  type="button"
+                  onClick={() => setSignupPassword('MBW-' + Math.floor(1000 + Math.random() * 9000).toString())}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-750 rounded-xl font-bold text-[10px] whitespace-nowrap transition-colors"
+                >
+                  Regen
+                </button>
+              </div>
+              <p className="text-[9px] text-slate-400 mt-1">This passcode acts as an immediate override to bypass Google's OAuth consent screen blocks.</p>
             </div>
 
             <button

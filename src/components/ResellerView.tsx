@@ -23,6 +23,7 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
   const [kpis, setKpis] = useState<KpiTarget[]>([]);
   const [finances, setFinances] = useState<FinanceRecord[]>([]);
   const [leads, setLeads] = useState<LeadCollection[]>([]);
+  const [reports, setReports] = useState<StatusReport[]>([]);
   
   // States
   const [loading, setLoading] = useState(false);
@@ -77,6 +78,12 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
       const leadSnap = await getDocs(leadQuery);
       const leadList = leadSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as LeadCollection[];
       setLeads(leadList);
+
+      // 4. Fetch Status Reports filed by this reseller
+      const reportQuery = query(collection(db, 'reports'), where('resellerId', '==', user.uid));
+      const reportSnap = await getDocs(reportQuery);
+      const reportList = reportSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as StatusReport[];
+      setReports(reportList);
     } catch (err: any) {
       console.error(err);
       setError('Failed to fetch dashboard metrics.');
@@ -255,30 +262,48 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
   // Real-time calculation of actuals vs assigned targets:
   const leadsCount = leads.length;
   const totalRevenue = leads.reduce((sum, item) => sum + item.revenueCollected, 0);
-  const leadTargetValue = kpis.find(k => k.kpiName.toLowerCase().includes('lead'))?.targetValue || 12;
-  const revenueTargetValue = kpis.find(k => k.kpiName.toLowerCase().includes('revenue'))?.targetValue || 50000;
+  const leadTargetValue = kpis.find(k => k.kpiName.toLowerCase().includes('lead'))?.targetValue || 0;
+  const revenueTargetValue = kpis.find(k => k.kpiName.toLowerCase().includes('revenue'))?.targetValue || 0;
   
-  const leadCompletionPct = Math.min(100, (leadsCount / leadTargetValue) * 100);
-  const revenueCompletionPct = Math.min(100, (totalRevenue / revenueTargetValue) * 100);
+  const leadCompletionPct = leadTargetValue > 0 ? Math.min(100, (leadsCount / leadTargetValue) * 100) : 0;
+  const revenueCompletionPct = revenueTargetValue > 0 ? Math.min(100, (totalRevenue / revenueTargetValue) * 100) : 0;
 
   // Approximate commission estimation (typically 8%)
   const estCommission = totalRevenue * 0.08;
 
-  // Next support allocation due date (mocked beautifully as due in 2d)
-  const biweeklyAlloc = finances.find(f => f.type === 'biweekly_support' && f.status === 'paid')?.amount || 5000;
+  // Next support allocation due date with no fallback placeholder
+  const biweeklyAlloc = finances.find(f => f.type === 'biweekly_support' && f.status === 'paid')?.amount || 0;
 
   // Area Chart Calculations
   const svgWidth = 600;
   const svgHeight = 160;
   
+  // Create daily trend data dynamically from the leads database collection
+  const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dailyRevenue = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+  
+  leads.forEach(lead => {
+    if (lead.dateAdded) {
+      try {
+        const dateObj = new Date(lead.dateAdded);
+        const dayName = weekDays[dateObj.getDay()];
+        if (dayName in dailyRevenue) {
+          dailyRevenue[dayName as keyof typeof dailyRevenue] += lead.revenueCollected;
+        }
+      } catch (e) {
+        console.warn('Invalid lead date encountered', e);
+      }
+    }
+  });
+
   const weeklyTrendData = [
-    { label: 'Mon', revenue: Math.min(totalRevenue, 5000) * 0.3 },
-    { label: 'Tue', revenue: Math.min(totalRevenue, 5000) * 0.5 },
-    { label: 'Wed', revenue: Math.min(totalRevenue, 5000) * 0.4 },
-    { label: 'Thu', revenue: Math.min(totalRevenue, 5000) * 0.7 },
-    { label: 'Fri', revenue: Math.min(totalRevenue, 12000) * 0.8 },
-    { label: 'Sat', revenue: totalRevenue * 0.9 },
-    { label: 'Sun', revenue: totalRevenue }
+    { label: 'Mon', revenue: dailyRevenue.Mon },
+    { label: 'Tue', revenue: dailyRevenue.Tue },
+    { label: 'Wed', revenue: dailyRevenue.Wed },
+    { label: 'Thu', revenue: dailyRevenue.Thu },
+    { label: 'Fri', revenue: dailyRevenue.Fri },
+    { label: 'Sat', revenue: dailyRevenue.Sat },
+    { label: 'Sun', revenue: dailyRevenue.Sun }
   ];
 
   const maxVal = Math.max(...weeklyTrendData.map(d => d.revenue), 1000);
@@ -415,9 +440,11 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
           </div>
           <div className="mt-4">
             <h3 className="text-2xl font-bold tracking-tight text-slate-900 font-mono">
-              {weeklyTrendData.length} entries
+              {reports.length} reports
             </h3>
-            <p className="text-[10px] text-slate-450 mt-1 font-medium">Synced with regional directors</p>
+            <p className="text-[10px] text-slate-450 mt-1 font-medium">
+              {reports.length === 0 ? 'No status reports filed' : 'Synced with regional directors'}
+            </p>
           </div>
         </div>
 

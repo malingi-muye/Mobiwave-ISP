@@ -29,6 +29,12 @@ export default function App() {
   const [publicReqId, setPublicReqId] = useState<string | null>(null);
   const [showPublicCreator, setShowPublicCreator] = useState(false);
 
+  // Registered Agent Bypass sign-in state
+  const [activeTab, setActiveTab] = useState<'google' | 'passcode'>('google');
+  const [bypassEmail, setBypassEmail] = useState('');
+  const [bypassCode, setBypassCode] = useState('');
+  const [bypassError, setBypassError] = useState<string | null>(null);
+
   useEffect(() => {
     // Check parameters
     const params = new URLSearchParams(window.location.search);
@@ -56,8 +62,30 @@ export default function App() {
           setUser(currentUser);
           await loadUserProfile(currentUser);
         } else {
-          setUser(null);
-          setProfile(null);
+          const cachedBypass = sessionStorage.getItem('bypass_user');
+          if (cachedBypass) {
+            try {
+              const sessionData = JSON.parse(cachedBypass);
+              const mockUser = {
+                uid: sessionData.uid,
+                email: sessionData.email,
+                displayName: sessionData.displayName,
+                emailVerified: true,
+                isAnonymous: false,
+                providerId: 'password_bypass',
+              } as unknown as User;
+              setUser(mockUser);
+              setProfile(sessionData);
+              setSimulatedRole(sessionData.role);
+            } catch (e) {
+              sessionStorage.removeItem('bypass_user');
+              setUser(null);
+              setProfile(null);
+            }
+          } else {
+            setUser(null);
+            setProfile(null);
+          }
         }
         setLoading(false);
       });
@@ -152,6 +180,55 @@ export default function App() {
     setUser(null);
     setProfile(null);
     sessionStorage.removeItem('google_access_token');
+    sessionStorage.removeItem('bypass_user');
+  };
+
+  const handleBypassLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bypassEmail || !bypassCode) {
+      setBypassError('Provide both registered email & bypass passcode.');
+      return;
+    }
+
+    setIsLoggingIn(true);
+    setBypassError(null);
+    try {
+      const q = query(collection(db, 'users'), where('email', '==', bypassEmail.toLowerCase().trim()));
+      const snap = await getDocs(q);
+
+      if (snap.empty) {
+        setBypassError('Account not registered in Affiliate Directory.');
+        return;
+      }
+
+      const userDoc = snap.docs[0];
+      const userData = userDoc.data() as UserProfile;
+
+      if (!userData.password || userData.password.trim() !== bypassCode.trim()) {
+        setBypassError('Invalid bypass passcode. Check your email or contact Admin.');
+        return;
+      }
+
+      // Successful bypass matching
+      const mockUser = {
+        uid: userData.uid,
+        email: userData.email,
+        displayName: userData.displayName,
+        emailVerified: true,
+        isAnonymous: false,
+        providerId: 'password_bypass'
+      } as unknown as User;
+
+      sessionStorage.setItem('bypass_user', JSON.stringify(userData));
+      setUser(mockUser);
+      setProfile(userData);
+      setSimulatedRole(userData.role);
+    } catch (err: any) {
+      console.error(err);
+      setBypassError('Bypass authenticating offline. Try again.');
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
   const saveSpreadsheetId = (id: string) => {
@@ -431,22 +508,105 @@ export default function App() {
               </div>
             </div>
 
-            {/* Material Google Authenticator button */}
-            <div className="pt-2">
-              <button 
-                onClick={handleLogin}
-                disabled={isLoggingIn}
-                className="w-full h-[40px] px-4 border border-[#dadce0] rounded-[4px] bg-white hover:bg-[#f7fafe] hover:border-[#d2e3fc] flex items-center justify-center gap-3 cursor-pointer text-[#3c4043] font-sans font-medium text-sm transition-all shadow-sm active:bg-slate-50"
+            {/* Elegant Tab Switcher to bypass Google OAuth Consent Screen issues */}
+            <div className="flex bg-slate-100 p-1 rounded-xl mx-auto w-full max-w-sm">
+              <button
+                type="button"
+                onClick={() => { setActiveTab('google'); setBypassError(null); }}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'google'
+                    ? 'bg-white text-slate-950 shadow-sm font-semibold'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
               >
-                <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="w-[18px] h-[18px] flex-shrink-0">
-                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
-                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
-                  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
-                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
-                </svg>
-                <span>{isLoggingIn ? 'Establishing connection...' : 'Sign in with Google'}</span>
+                Google SSO
+              </button>
+              <button
+                type="button"
+                onClick={() => { setActiveTab('passcode'); setBypassError(null); }}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'passcode'
+                    ? 'bg-white text-slate-950 shadow-sm font-semibold'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Affiliate Bypass 🔑
               </button>
             </div>
+
+            {activeTab === 'google' ? (
+              /* Google Login Section */
+              <div className="space-y-4 animate-fadeIn">
+                <div className="pt-1">
+                  <button 
+                    onClick={handleLogin}
+                    disabled={isLoggingIn}
+                    className="w-full h-[40px] px-4 border border-[#dadce0] rounded-[4px] bg-white hover:bg-[#f7fafe] hover:border-[#d2e3fc] flex items-center justify-center gap-3 cursor-pointer text-[#3c4043] font-sans font-medium text-sm transition-all shadow-sm active:bg-slate-50"
+                  >
+                    <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="w-[18px] h-[18px] flex-shrink-0">
+                      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                    </svg>
+                    <span>{isLoggingIn ? 'Establishing connection...' : 'Sign in with Google'}</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-450 leading-relaxed text-center px-2">
+                  *Standard OAuth. If Google blocks authorization with "verification required" 403 screen, use the <strong>"Affiliate Bypass"</strong> tab using the passcode linked to your account.
+                </p>
+              </div>
+            ) : (
+              /* Passcode Login Form */
+              <form onSubmit={handleBypassLogin} className="space-y-4 text-left animate-fadeIn">
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider font-extrabold text-slate-400 mb-1">Registered Affiliate Email</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="name@gmail.com"
+                    value={bypassEmail}
+                    onChange={(e) => setBypassEmail(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none font-semibold text-slate-700 text-xs bg-slate-50/50"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider font-extrabold text-slate-400 mb-1">Bypass Access Passcode</label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="e.g. MBW-4281"
+                    value={bypassCode}
+                    onChange={(e) => setBypassCode(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none font-mono font-bold text-slate-700 text-xs tracking-widest bg-slate-50/50"
+                  />
+                </div>
+
+                {bypassError && (
+                  <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl flex gap-2 items-center">
+                    <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0" />
+                    <p className="text-[10px] text-rose-700 font-bold leading-normal">{bypassError}</p>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isLoggingIn}
+                  className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold py-2.5 px-4 rounded-xl transition-all shadow-sm active:scale-95 text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer mt-1"
+                >
+                  {isLoggingIn ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Authorizing Profile...
+                    </>
+                  ) : (
+                    <>
+                      <UserCheck className="w-4 h-4" /> Bypass Google Auth & Enter
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
 
           </div>
         </div>
