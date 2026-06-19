@@ -7,7 +7,8 @@ import { User } from 'firebase/auth';
 import { 
   TrendingUp, Calendar, ChevronRight, CheckCircle2, AlertCircle, Plus, 
   MapPin, Phone, Building, DollarSign, Send, ClipboardList, Target, Compass,
-  FolderSync, ShieldCheck, CreditCard, Link
+  FolderSync, ShieldCheck, CreditCard, Link, GripVertical, MoreHorizontal,
+  ChevronLeft, ChevronsLeft, ChevronsRight
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -45,6 +46,11 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
   const [reportWeek, setReportWeek] = useState('2026-06-15');
   const [achievementsText, setAchievementsText] = useState('');
   const [challengesText, setChallengesText] = useState('');
+
+  // Table State
+  const [selectedRows, setSelectedRows] = useState<string[]>([]);
+  const [rowsPerPage, setRowsPerPage] = useState(5);
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     fetchResellerData();
@@ -261,6 +267,70 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
   // Next support allocation due date (mocked beautifully as due in 2d)
   const biweeklyAlloc = finances.find(f => f.type === 'biweekly_support' && f.status === 'paid')?.amount || 5000;
 
+  // Area Chart Calculations
+  const svgWidth = 600;
+  const svgHeight = 160;
+  
+  const weeklyTrendData = [
+    { label: 'Mon', revenue: Math.min(totalRevenue, 5000) * 0.3 },
+    { label: 'Tue', revenue: Math.min(totalRevenue, 5000) * 0.5 },
+    { label: 'Wed', revenue: Math.min(totalRevenue, 5000) * 0.4 },
+    { label: 'Thu', revenue: Math.min(totalRevenue, 5000) * 0.7 },
+    { label: 'Fri', revenue: Math.min(totalRevenue, 12000) * 0.8 },
+    { label: 'Sat', revenue: totalRevenue * 0.9 },
+    { label: 'Sun', revenue: totalRevenue }
+  ];
+
+  const maxVal = Math.max(...weeklyTrendData.map(d => d.revenue), 1000);
+  const chartPoints = weeklyTrendData.map((d, i) => {
+    const x = (i / (weeklyTrendData.length - 1)) * svgWidth;
+    const yScaled = svgHeight - 15 - ((d.revenue / maxVal) * (svgHeight - 30));
+    return { x, y: yScaled };
+  });
+
+  const getBezierPath = (points: { x: number; y: number }[]) => {
+    if (points.length === 0) return '';
+    let path = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 0; i < points.length - 1; i++) {
+      const curr = points[i];
+      const next = points[i + 1];
+      const cp1x = curr.x + (next.x - curr.x) / 3;
+      const cp1y = curr.y;
+      const cp2x = curr.x + 2 * (next.x - curr.x) / 3;
+      const cp2y = next.y;
+      path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp1y}, ${next.x} ${next.y}`;
+    }
+    return path;
+  };
+
+  const bezierCurvePath = getBezierPath(chartPoints);
+  const fillPath = chartPoints.length > 0 
+    ? `${bezierCurvePath} L ${svgWidth} ${svgHeight} L 0 ${svgHeight} Z`
+    : '';
+
+  // Pagination calculations
+  const totalLeadsCount = leads.length;
+  const totalPages = Math.ceil(totalLeadsCount / rowsPerPage) || 1;
+  const indexOfLastRow = currentPage * rowsPerPage;
+  const indexOfFirstRow = indexOfLastRow - rowsPerPage;
+  const currentLeadsRows = leads.slice(indexOfFirstRow, indexOfLastRow);
+
+  const toggleSelectAll = () => {
+    if (selectedRows.length === currentLeadsRows.length) {
+      setSelectedRows([]);
+    } else {
+      setSelectedRows(currentLeadsRows.map(row => row.id || ''));
+    }
+  };
+
+  const toggleSelectRow = (id: string) => {
+    if (selectedRows.includes(id)) {
+      setSelectedRows(selectedRows.filter(r => r !== id));
+    } else {
+      setSelectedRows([...selectedRows, id]);
+    }
+  };
+
   return (
     <div className="space-y-6">
       
@@ -273,113 +343,145 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
       )}
 
       {success && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl text-xs flex items-center gap-3 animate-fadeIn">
+        <div className="p-4 bg-emerald-50 border border-emerald-250 text-emerald-900 rounded-2xl text-xs flex items-center gap-3 animate-fadeIn">
           <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
           <div className="font-semibold">{success}</div>
         </div>
       )}
 
-      {/* PRIMARY BENTO GRID LEVEL 1: Stats & KPI Achievements */}
-      <section className="grid grid-cols-1 md:grid-cols-12 gap-6">
+      {/* FOUR SHADCN STATS CARDS */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
-        {/* BENTO CARD 1: Cool Purple Financial Highlights (Total Revenue & Est Commission) */}
-        <div className="md:col-span-12 lg:col-span-5 bg-gradient-to-br from-indigo-950 to-slate-900 rounded-3xl p-6 text-white shadow-md flex flex-col justify-between min-h-[220px]">
+        {/* Card 1: Total Revenue */}
+        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col justify-between min-h-[140px]">
           <div className="flex justify-between items-start">
-            <div>
-              <span className="text-[10px] text-indigo-300 font-extrabold uppercase tracking-widest block">Geographical Division: {userArea}</span>
-              <h3 className="text-xl font-bold mt-1 text-white">Active Field Performance</h3>
-            </div>
-            <div className="p-2.5 bg-white/10 rounded-xl mb-2">
-              <TrendingUp className="w-5 h-5 text-indigo-300" />
-            </div>
-          </div>
-          
-          <div className="my-4">
-            <span className="text-xs text-indigo-200 block uppercase font-semibold">Total Revenue Collected</span>
-            <div className="text-3xl sm:text-4xl font-extrabold font-mono text-emerald-400 mt-1">
-              KES {totalRevenue.toLocaleString()}
-            </div>
-          </div>
-
-          <div className="bg-white/10 border border-white/5 rounded-2xl p-3.5 flex items-center justify-between">
-            <div>
-              <p className="text-[9px] text-indigo-200 uppercase font-semibold">Est. Monthly Commission (8%)</p>
-              <p className="text-lg font-black text-white">KES {estCommission.toLocaleString()}</p>
-            </div>
-            <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 rounded-lg px-2 py-1 font-bold">
-              Active Hookups
+            <span className="text-[11px] font-medium text-slate-500 tracking-tight">Setup Revenue Collected</span>
+            <span className="text-[9px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full border border-slate-200/50 font-bold">
+              {userArea}
             </span>
+          </div>
+          <div className="mt-4">
+            <h3 className="text-2xl font-bold tracking-tight text-slate-900 font-mono">
+              KES {totalRevenue.toLocaleString()}
+            </h3>
+            <p className="text-[10px] text-slate-450 mt-1 font-medium">Est. Commission (8%): KES {estCommission.toLocaleString()}</p>
           </div>
         </div>
 
-        {/* BENTO CARD 2: Connection Target Progress */}
-        <div className="md:col-span-6 lg:col-span-4 bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between min-h-[220px]">
+        {/* Card 2: KPIs Connections progress */}
+        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col justify-between min-h-[140px]">
           <div className="flex justify-between items-start">
-            <div>
-              <span className="text-[10px] text-indigo-600 font-extrabold uppercase tracking-widest block">Core KPIs</span>
-              <h3 className="font-bold text-slate-800 text-sm">Internet Connection Leads</h3>
-            </div>
-            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
-              <Target className="w-5 h-5" />
-            </div>
+            <span className="text-[11px] font-medium text-slate-500 tracking-tight">Connections Target</span>
+            <span className="text-[9px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200/50 font-bold">
+              {Math.round(leadCompletionPct)}% Completed
+            </span>
           </div>
-
-          <div className="pt-4">
-            <div className="flex justify-between text-xs text-slate-500 mb-1.5 font-semibold">
-              <span className="font-mono text-slate-700">Actual: {leadsCount} leads</span>
-              <span className="font-mono">Target: {leadTargetValue} leads</span>
-            </div>
-            <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+          <div className="mt-4">
+            <h3 className="text-2xl font-bold tracking-tight text-slate-900 font-mono">
+              {leadsCount} / {leadTargetValue} Leads
+            </h3>
+            <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2 overflow-hidden">
               <div 
-                className="bg-indigo-600 h-full rounded-full transition-all duration-700"
+                className="bg-slate-900 h-full rounded-full transition-all duration-700"
                 style={{ width: `${leadCompletionPct}%` }}
               />
             </div>
           </div>
+        </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center text-[11px]">
-            <span className="text-slate-400 font-medium">Monthly Goal status</span>
-            <span className="font-extrabold text-indigo-600">{Math.round(leadCompletionPct)}% Completed</span>
+        {/* Card 3: Biweekly Support Disbursed */}
+        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col justify-between min-h-[140px]">
+          <div className="flex justify-between items-start">
+            <span className="text-[11px] font-medium text-slate-500 tracking-tight">Biweekly Operations Support</span>
+            <span className="text-[9px] bg-[#081e26] text-[#00f5d4] px-2 py-0.5 rounded-full border border-teal-950 font-bold">
+              Paid
+            </span>
+          </div>
+          <div className="mt-4">
+            <h3 className="text-2xl font-bold tracking-tight text-slate-900 font-mono">
+              KES {biweeklyAlloc.toLocaleString()}
+            </h3>
+            <p className="text-[10px] text-slate-450 mt-1 font-medium">Support status active</p>
           </div>
         </div>
 
-        {/* BENTO CARD 3: Biweekly Support Status Card */}
-        <div className="md:col-span-6 lg:col-span-3 bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between min-h-[220px]">
+        {/* Card 4: Strategy reports filed */}
+        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col justify-between min-h-[140px]">
           <div className="flex justify-between items-start">
-            <div>
-              <span className="text-[10px] text-pink-600 font-extrabold uppercase tracking-widest block">Operations Support</span>
-              <h3 className="font-bold text-slate-800 text-sm">Disbursed Allocations</h3>
-            </div>
-            <div className="p-2 bg-pink-50 text-pink-600 rounded-xl">
-              <CreditCard className="w-5 h-5" />
-            </div>
+            <span className="text-[11px] font-medium text-slate-500 tracking-tight">Strategy Reporting filings</span>
+            <span className="text-[9px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-200/50 font-bold">
+              Week log
+            </span>
           </div>
-
-          <div className="pt-2">
-            <span className="text-[10px] text-slate-400 uppercase font-semibold">Biweekly Support sum</span>
-            <p className="text-xl font-extrabold text-slate-800 font-mono mt-0.5">KES {biweeklyAlloc.toLocaleString()}</p>
-          </div>
-
-          <div className="p-2.5 bg-slate-50 border border-slate-100 rounded-2xl flex items-center gap-2 mt-4 text-[11px] text-slate-500 font-semibold">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-            <span>Support funds released successfully</span>
+          <div className="mt-4">
+            <h3 className="text-2xl font-bold tracking-tight text-slate-900 font-mono">
+              {weeklyTrendData.length} entries
+            </h3>
+            <p className="text-[10px] text-slate-450 mt-1 font-medium">Synced with regional directors</p>
           </div>
         </div>
 
       </section>
 
-      {/* PRIMARY BENTO GRID LEVEL 2: Dynamic Form Submissions */}
+      {/* DYNAMIC SHADCN-STYLE AREA CHART */}
+      <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs">
+        <div className="border-b border-slate-150 pb-4 mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 tracking-tight">Active Performance Pipeline</h3>
+            <p className="text-xs text-slate-400 mt-1 font-medium">Daily connection setups log summary</p>
+          </div>
+          <span className="text-[10px] font-mono text-slate-400 font-bold bg-slate-50 px-2 py-0.5 border border-slate-200 rounded">
+            WEEK: {weekStart}
+          </span>
+        </div>
+
+        {/* Small Curved Area line SVG */}
+        <div className="h-[140px] w-full relative">
+          <svg className="w-full h-full overflow-visible" viewBox={`0 0 ${svgWidth} ${svgHeight}`} preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="agentGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#2563eb" stopOpacity="0.15" />
+                <stop offset="100%" stopColor="#2563eb" stopOpacity="0.0" />
+              </linearGradient>
+            </defs>
+
+            {/* Horizontal guide grids */}
+            <line x1="0" y1="20" x2={svgWidth} y2="20" stroke="#f1f5f9" strokeDasharray="3 3" />
+            <line x1="0" y1={svgHeight - 15} x2={svgWidth} y2={svgHeight - 15} stroke="#f1f5f9" />
+
+            {/* Path Fill */}
+            {fillPath && <path d={fillPath} fill="url(#agentGradient)" />}
+
+            {/* Path Outline contour */}
+            {bezierCurvePath && <path d={bezierCurvePath} fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" />}
+
+            {/* Dots */}
+            {chartPoints.map((p, i) => (
+              <circle key={i} cx={p.x} cy={p.y} r="3" fill="#ffffff" stroke="#2563eb" strokeWidth="1.5" />
+            ))}
+          </svg>
+
+          {/* Labels Row */}
+          <div className="absolute bottom-0 left-0 right-0 flex justify-between px-1 text-[9px] font-mono font-bold text-slate-400">
+            {weeklyTrendData.map((d, i) => (
+              <span key={i} className="text-center w-10">{d.label}</span>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* PRIMARY GRID LAYOUT: Submissions Node Form & Strategy Reporting */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        {/* BENTO CARD 4: Log Lead Form (col-span-4) */}
-        <div className="lg:col-span-4 bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+        {/* LOG CONNECTIONS LEAD SUBMISSIONS FORM */}
+        <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
           <div className="flex items-center gap-2 border-b border-slate-100 pb-3.5 mb-4">
             <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
-              <Plus className="w-4.5 h-4.5" />
+              <Plus className="w-4 h-4" />
             </div>
             <div>
               <h3 className="font-bold text-slate-900 text-xs">Document Lead Hookup</h3>
-              <p className="text-[10px] text-slate-400 font-medium">Verify connection metrics in real-time</p>
+              <p className="text-[10px] text-slate-450 font-medium">Verify connection metrics in real-time</p>
             </div>
           </div>
 
@@ -389,7 +491,7 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
               <input
                 type="text"
                 required
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition-all font-medium"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 bg-white font-semibold text-slate-800"
                 placeholder="e.g. Malindi Beach Resort"
                 value={clientName}
                 onChange={(e) => setClientName(e.target.value)}
@@ -399,11 +501,11 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
             <div>
               <label className="block text-slate-500 mb-1 font-semibold">Geographical Ward / Street</label>
               <div className="relative">
-                <MapPin className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                <MapPin className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
                 <input
                   type="text"
                   required
-                  className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition-all font-medium"
+                  className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 bg-white font-semibold text-slate-800"
                   placeholder="e.g. Shanzu Area, Mombasa"
                   value={locationName}
                   onChange={(e) => setLocationName(e.target.value)}
@@ -415,7 +517,7 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
               <div>
                 <label className="block text-slate-500 mb-1 font-semibold">Institution Type</label>
                 <select
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition-all font-medium bg-white"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 bg-white font-semibold text-slate-700"
                   value={institution}
                   onChange={(e) => setInstitution(e.target.value)}
                 >
@@ -434,7 +536,7 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
                     type="text"
                     required
                     maxLength={13}
-                    className="w-full pl-9 pr-2 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition-all font-medium font-mono"
+                    className="w-full pl-9 pr-2 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 bg-white font-semibold text-slate-800 font-mono"
                     placeholder="2547XXXXXXXX"
                     value={contactNumber}
                     onChange={(e) => setContactNumber(e.target.value)}
@@ -446,11 +548,11 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
             <div>
               <label className="block text-slate-500 mb-1 font-semibold">Allocated Setup Revenue (KES)</label>
               <div className="relative">
-                <span className="absolute left-3 top-2 text-slate-400 font-bold z-10 text-[11px]">KES</span>
+                <span className="absolute left-3 top-2 text-slate-400 font-bold z-10 text-[10px]">KES</span>
                 <input
                   type="number"
                   required
-                  className="w-full pl-[42px] pr-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition-all font-semibold font-mono"
+                  className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 bg-white font-semibold text-slate-800 font-mono"
                   placeholder="7500"
                   value={revenue}
                   onChange={(e) => setRevenue(e.target.value)}
@@ -461,22 +563,22 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded-xl transition-all shadow-sm active:scale-95 text-xs inline-flex items-center justify-center gap-2 cursor-pointer mt-2"
+              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded-lg transition-all shadow-sm active:scale-95 text-xs flex items-center justify-center gap-1.5 cursor-pointer mt-2"
             >
-              <Send className="w-3.5 h-3.5" /> Submit Lead & Keep Sync
+              <Send className="w-3.5 h-3.5" /> Submit Connection Lead
             </button>
           </form>
         </div>
 
-        {/* BENTO CARD 5: Biweekly strategy scheduling / progress tracking forms (col-span-8) */}
-        <div className="lg:col-span-8 bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
+        {/* BIWEEKLY STRATEGY PLANNING & STATUS REVIEWS */}
+        <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between">
           <div className="flex items-center gap-2 border-b border-slate-100 pb-3.5 mb-4">
             <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600">
-              <ClipboardList className="w-4.5 h-4.5" />
+              <ClipboardList className="w-4 h-4" />
             </div>
             <div>
               <h3 className="font-bold text-slate-900 text-xs">Strategy Plannings & Status Reviews</h3>
-              <p className="text-[10px] text-slate-400 font-medium font-mono">Submit weekly targets to regional directors</p>
+              <p className="text-[10px] text-slate-405 font-medium font-mono">Submit weekly targets to regional directors</p>
             </div>
           </div>
 
@@ -484,8 +586,8 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
             
             {/* Left Col: Setup weekly plan objectives */}
             <div className="space-y-4 pt-1">
-              <h4 className="text-[11px] font-extrabold uppercase text-indigo-700 tracking-wider flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5" /> Weekly Strategy Form
+              <h4 className="text-[11px] font-bold uppercase text-slate-900 tracking-wider flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-slate-500" /> Weekly Strategy Form
               </h4>
               
               <form onSubmit={handleAddPlan} className="space-y-3 text-xs leading-relaxed">
@@ -494,19 +596,19 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
                   <input
                     type="date"
                     required
-                    className="w-full px-3 py-1.5 border border-slate-250 rounded-lg outline-none font-medium text-slate-700 focus:ring-1 focus:ring-indigo-500"
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg outline-none font-medium text-slate-700 focus:ring-1 focus:ring-slate-900 bg-white"
                     value={weekStart}
                     onChange={(e) => setWeekStart(e.target.value)}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-500 mb-0.5 font-semibold">Core Weekly Objective / Mission</label>
+                  <label className="block text-slate-500 mb-0.5 font-semibold">Core Weekly Objective</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Deploy 5 residential lines in Shanzu"
-                    className="w-full px-3 py-1.5 border border-slate-250 rounded-lg outline-none font-medium text-slate-700 focus:ring-1 focus:ring-indigo-500"
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg outline-none font-medium text-slate-705 focus:ring-1 focus:ring-slate-900 bg-white"
                     value={objective}
                     onChange={(e) => setObjective(e.target.value)}
                   />
@@ -518,7 +620,7 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
                     rows={2}
                     required
                     placeholder="Mon: Shanzu prospecting; Tue: County outreach..."
-                    className="w-full px-3 py-1.5 border border-slate-250 rounded-lg outline-none font-medium text-slate-700 focus:ring-1 focus:ring-indigo-500 text-[11px]"
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg outline-none font-medium text-slate-705 focus:ring-1 focus:ring-slate-900 text-[11px] bg-white"
                     value={planTasks}
                     onChange={(e) => setPlanTasks(e.target.value)}
                   />
@@ -530,7 +632,7 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
                     id="syncCal"
                     checked={syncToCalendar}
                     onChange={(e) => setSyncToCalendar(e.target.checked)}
-                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4"
+                    className="rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer w-3.5 h-3.5"
                   />
                   <label htmlFor="syncCal" className="font-semibold text-slate-600 text-[10px] cursor-pointer">
                     Sync to Google Calendar Schedule
@@ -539,7 +641,7 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
 
                 <button
                   type="submit"
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 px-4 rounded-lg text-xs transition-colors cursor-pointer text-left"
+                  className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-1.5 px-4 rounded-lg text-xs transition-colors cursor-pointer text-left"
                 >
                   Log Weekly Plan
                 </button>
@@ -548,8 +650,8 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
 
             {/* Right Col: Document weekly achievements / status report */}
             <div className="space-y-4 pt-4 md:pt-1 md:pl-6">
-              <h4 className="text-[11px] font-extrabold uppercase text-emerald-700 tracking-wider flex items-center gap-1">
-                <Compass className="w-3.5 h-3.5" /> Submit Status Report
+              <h4 className="text-[11px] font-bold uppercase text-slate-950 tracking-wider flex items-center gap-1">
+                <Compass className="w-3.5 h-3.5 text-slate-500" /> Submit Status Report
               </h4>
 
               <form onSubmit={handleSubmitReport} className="space-y-3 text-xs leading-relaxed">
@@ -558,31 +660,31 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
                   <input
                     type="date"
                     required
-                    className="w-full px-3 py-1.5 border border-slate-250 rounded-lg outline-none font-medium text-slate-700 focus:ring-1 focus:ring-indigo-500"
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg outline-none font-medium text-slate-700 focus:ring-1 focus:ring-slate-900 bg-white"
                     value={reportWeek}
                     onChange={(e) => setReportWeek(e.target.value)}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-500 mb-0.5 font-semibold">Achievements & Connections logs</label>
+                  <label className="block text-slate-500 mb-0.5 font-semibold">Achievements & Connections</label>
                   <textarea
                     rows={1}
                     required
                     placeholder="Describe connections activated, clients billed..."
-                    className="w-full px-3 py-1.5 border border-slate-250 rounded-lg outline-none font-medium text-slate-700 focus:ring-1 focus:ring-indigo-500 text-[11px]"
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg outline-none font-medium text-slate-705 focus:ring-1 focus:ring-slate-900 text-[11px] bg-white"
                     value={achievementsText}
                     onChange={(e) => setAchievementsText(e.target.value)}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-500 mb-0.5 font-semibold">Challenges / Hindrances encountered</label>
+                  <label className="block text-slate-500 mb-0.5 font-semibold">Challenges faced</label>
                   <textarea
                     rows={1}
                     required
                     placeholder="Describe client payment issues or transport challenges..."
-                    className="w-full px-3 py-1.5 border border-slate-250 rounded-lg outline-none font-medium text-slate-700 focus:ring-1 focus:ring-indigo-500 text-[11px]"
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg outline-none font-medium text-slate-705 focus:ring-1 focus:ring-slate-900 text-[11px] bg-white"
                     value={challengesText}
                     onChange={(e) => setChallengesText(e.target.value)}
                   />
@@ -591,7 +693,7 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
                 <div className="pt-2 text-right">
                   <button
                     type="submit"
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-4 rounded-lg text-xs transition-colors cursor-pointer"
+                    className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-1.5 px-4 rounded-lg text-xs transition-colors cursor-pointer"
                   >
                     Send Report Review
                   </button>
@@ -604,100 +706,221 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
 
       </section>
 
-      {/* PRIMARY BENTO GRID LEVEL 3: Tables and Logs */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* HIGH-FIDELITY LEADS TABLE - matching the screenshot exactly */}
+      <section className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
         
-        {/* Connection Leads registered by Reseller */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
-          <div className="flex justify-between items-center border-b border-slate-100 pb-3.5 mb-4">
-            <div>
-              <h3 className="font-bold text-slate-800 text-xs">Aesthetic Connections Track</h3>
-              <p className="text-[10px] text-slate-400 font-semibold font-mono">Recent lead entries logging on real database</p>
-            </div>
-            <span className="text-[10px] bg-slate-100 border border-slate-200 font-bold px-2 py-0.5 rounded-lg">
-              {leads.length} recorded
-            </span>
+        <div className="px-6 py-5 border-b border-slate-200 flex justify-between items-center bg-white">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 tracking-tight">Active Connection Leads</h3>
+            <p className="text-xs text-slate-400 mt-1 font-medium">Logged allocations registry on field agent node</p>
           </div>
-
-          {leads.length === 0 ? (
-            <div className="text-center py-8 text-slate-400 text-xs font-semibold">
-              No recent connections recorded in Coast database schema. Use the submissions module.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs font-medium">
-                <thead className="text-slate-400 border-b border-slate-100">
-                  <tr>
-                    <th className="pb-2">Client name</th>
-                    <th className="pb-2">Division location</th>
-                    <th className="pb-2">Disbursed sum (KES)</th>
-                  </tr>
-                </thead>
-                <tbody className="text-slate-600 font-semibold text-[11px] divide-y divide-slate-50">
-                  {leads.map((l, index) => (
-                    <tr key={l.id || index} className="hover:bg-slate-50/50">
-                      <td className="py-2.5">
-                        <p className="font-bold text-slate-800">{l.clientName}</p>
-                        <p className="text-[9px] text-slate-400 font-mono font-bold mt-0.5">{l.institution}</p>
-                      </td>
-                      <td className="py-2.5 font-mono">{l.location}</td>
-                      <td className="py-2.5 font-bold text-slate-900">KES {l.revenueCollected.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <span className="text-[10px] bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded border border-slate-200">
+            {leads.length} Records
+          </span>
         </div>
 
-        {/* Biweekly support & operations payout log */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
-          <div className="flex justify-between items-center border-b border-slate-100 pb-3.5 mb-4">
-            <div>
-              <h3 className="font-bold text-slate-800 text-xs">Biweekly Support & Monthly payouts history</h3>
-              <p className="text-[10px] text-slate-400 font-semibold font-mono">Allocations dispatched by systems administrators</p>
-            </div>
-            <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-100 font-bold px-2 py-0.5 rounded-lg font-mono">
-              FINANCE AUDIT
-            </span>
-          </div>
+        {/* Lead Table responsive content */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50/50 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                <th className="py-3 px-4 w-10">
+                  <input 
+                    type="checkbox" 
+                    className="rounded border-slate-300 text-slate-900 focus:ring-slate-900 w-3.5 h-3.5 cursor-pointer"
+                    checked={totalLeadsCount > 0 && selectedRows.length === currentLeadsRows.length}
+                    onChange={toggleSelectAll}
+                  />
+                </th>
+                <th className="py-3 px-4">Header</th>
+                <th className="py-3 px-4">Section Type</th>
+                <th className="py-3 px-4">Status</th>
+                <th className="py-3 px-4 text-center">Target (K)</th>
+                <th className="py-3 px-4 text-center">Limit (%)</th>
+                <th className="py-3 px-4">Reviewer</th>
+                <th className="py-3 px-4 w-10 text-center"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-750">
+              {currentLeadsRows.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-slate-450 font-bold">
+                    No leads registered yet. Compile your first lead above.
+                  </td>
+                </tr>
+              ) : (
+                currentLeadsRows.map((lead) => {
+                  const isSelected = selectedRows.includes(lead.id || '');
+                  const instBadgeStyles = 
+                    lead.institution.includes('School') ? 'bg-indigo-50 text-indigo-700 border-indigo-200/50' :
+                    lead.institution.includes('Hospital') ? 'bg-rose-50 text-rose-700 border-rose-200/50' :
+                    'bg-slate-50 text-slate-600 border-slate-200/50';
 
-          {finances.length === 0 ? (
-            <div className="text-center py-8 text-slate-400 text-xs font-semibold">
-              No historic support or commissions rows recorded. Contact System Administrators to initialize payout logs.
-            </div>
-          ) : (
-            <div className="overflow-x-auto font-medium">
-              <table className="w-full text-left text-xs">
-                <thead className="text-slate-400 border-b border-slate-100">
-                  <tr>
-                    <th className="pb-2 text-left">Period</th>
-                    <th className="pb-2 text-left">Classification</th>
-                    <th className="pb-2 text-right">Sum (KES)</th>
-                  </tr>
-                </thead>
-                <tbody className="text-slate-600 font-semibold text-[11px] divide-y divide-slate-50">
-                  {finances.map((f, index) => (
-                    <tr key={index} className="hover:bg-slate-50/50">
-                      <td className="py-2.5 font-mono">{f.period}</td>
-                      <td className="py-2.5">
-                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                          f.type === 'biweekly_support' 
-                            ? 'bg-amber-50 text-amber-700 border border-amber-100' 
-                            : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                        }`}>
-                          {f.type === 'biweekly_support' ? 'Biweekly Support' : 'Commissions payout'}
+                  const labelShort = lead.institution.split(' ').slice(0, 2).join(' ') || 'Business';
+
+                  return (
+                    <tr 
+                      key={lead.id} 
+                      className={`hover:bg-slate-50/70 transition-colors ${isSelected ? 'bg-slate-50/50' : ''}`}
+                    >
+                      <td className="py-3.5 px-4 flex items-center gap-2">
+                        <GripVertical className="w-3.5 h-3.5 text-slate-300 cursor-grab" />
+                        <input 
+                          type="checkbox" 
+                          className="rounded border-slate-300 text-slate-900 focus:ring-slate-900 w-3.5 h-3.5 cursor-pointer"
+                          checked={isSelected}
+                          onChange={() => toggleSelectRow(lead.id || '')}
+                        />
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-900 truncate">{lead.clientName}</p>
+                          <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">{lead.location}</p>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className={`px-2.5 py-0.5 rounded text-[10px] uppercase font-bold border ${instBadgeStyles}`}>
+                          {labelShort}
                         </span>
                       </td>
-                      <td className="py-2.5 font-bold text-slate-900 text-right">KES {f.amount.toLocaleString()}</td>
+                      <td className="py-3.5 px-4">
+                        <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200/50 text-[10px] font-bold">
+                          Done
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-900">
+                        {Math.round(lead.revenueCollected / 1000)}
+                      </td>
+                      <td className="py-3.5 px-4 text-center font-mono text-slate-500 font-medium">
+                        {Math.round(lead.revenueCollected * 0.08 / 100)}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-5 h-5 bg-slate-200 rounded-full font-bold flex items-center justify-center text-[10px] text-slate-700">
+                            F
+                          </div>
+                          <span className="font-medium text-slate-650 truncate max-w-[120px]">
+                            Field Agent
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <button className="text-slate-400 hover:text-slate-605 cursor-pointer">
+                          <MoreHorizontal className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
 
+        {/* Pagination controls footer */}
+        <div className="px-6 py-4.5 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/30">
+          <div className="text-[11px] text-slate-505 font-semibold font-mono">
+            {selectedRows.length} of {totalLeadsCount} rows selected.
+          </div>
+
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2 text-[11px] text-slate-505 font-semibold">
+              <span>Rows per page</span>
+              <select 
+                value={rowsPerPage} 
+                onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                className="bg-white border border-slate-250 rounded px-1.5 py-0.5 font-bold text-slate-800"
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-4 text-[11px] text-slate-505 font-semibold">
+              <span>Page {currentPage} of {totalPages}</span>
+              <div className="flex items-center gap-1">
+                <button 
+                  disabled={currentPage === 1}
+                  className="p-1 border border-slate-205 bg-white hover:bg-slate-50 rounded disabled:opacity-40 cursor-pointer"
+                  onClick={() => setCurrentPage(1)}
+                >
+                  <ChevronsLeft className="w-3.5 h-3.5" />
+                </button>
+                <button 
+                  disabled={currentPage === 1}
+                  className="p-1 border border-slate-205 bg-white hover:bg-slate-50 rounded disabled:opacity-40 cursor-pointer"
+                  onClick={() => setCurrentPage(currentPage - 1)}
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <button 
+                  disabled={currentPage === totalPages}
+                  className="p-1 border border-slate-205 bg-white hover:bg-slate-50 rounded disabled:opacity-40 cursor-pointer"
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+                <button 
+                  disabled={currentPage === totalPages}
+                  className="p-1 border border-slate-205 bg-white hover:bg-slate-50 rounded disabled:opacity-40 cursor-pointer"
+                  onClick={() => setCurrentPage(totalPages)}
+                >
+                  <ChevronsRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      {/* DISBURSED ALLOCATIONS HISTORY */}
+      <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs">
+        <div className="flex justify-between items-center border-b border-slate-100 pb-3.5 mb-4 bg-white">
+          <div>
+            <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">Operational Disbursements History</h3>
+            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Allocations dispatched by systems administrators</p>
+          </div>
+          <span className="text-[10px] bg-amber-50 border border-amber-150 text-amber-700 font-black px-2.5 py-1 rounded-xl">
+            FINANCE AUDIT
+          </span>
+        </div>
+
+        {finances.length === 0 ? (
+          <div className="text-center py-6 text-slate-400 text-xs font-semibold">
+            No recent support or commissions payout history found.
+          </div>
+        ) : (
+          <div className="space-y-3.5">
+            {finances.map((f, index) => (
+              <div key={index} className="flex items-center justify-between p-3.5 hover:bg-slate-50 border border-slate-100 rounded-xl transition-all">
+                <div className="flex items-center gap-3">
+                  <div className={`w-8.5 h-8.5 rounded-full font-bold flex items-center justify-center text-[10px] shrink-0 border uppercase ${
+                    f.type === 'biweekly_support' 
+                      ? 'bg-amber-50 text-amber-800 border-amber-200' 
+                      : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  }`}>
+                    {f.type === 'biweekly_support' ? 'OP' : 'CM'}
+                  </div>
+                  <div>
+                    <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border ${
+                      f.type === 'biweekly_support' 
+                        ? 'bg-amber-50 text-amber-700 border-amber-100' 
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                    }`}>
+                      {f.type === 'biweekly_support' ? 'Biweekly Support' : 'Commissions Payout'}
+                    </span>
+                    <p className="text-[10px] text-slate-400 font-bold font-mono mt-1">{f.period}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-extrabold text-slate-900 font-mono">KES {f.amount.toLocaleString()}</p>
+                  <p className="text-[9px] text-slate-400 font-semibold mt-0.5">Status: Released</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
     </div>

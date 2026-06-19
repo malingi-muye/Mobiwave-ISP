@@ -316,7 +316,7 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
         email: signupEmail.toLowerCase().trim(),
         displayName: signupName,
         role: signupRole,
-        area: signupRole === 'reseller' ? signupArea : undefined
+        area: signupRole === 'reseller' ? signupArea : null
       };
 
       await setDoc(doc(db, 'users', pseudoUid), newProfile);

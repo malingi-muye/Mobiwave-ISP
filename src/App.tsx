@@ -159,21 +159,21 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex flex-col md:flex-row font-sans antialiased">
+    <div className="min-h-screen bg-slate-50/50 text-slate-900 flex flex-col lg:flex-row font-sans antialiased">
       
       {/* Mobile top navigation header */}
-      <div className="md:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-slate-200 sticky top-0 z-50">
-        <div className="flex items-center gap-2">
+      <div className="lg:hidden flex items-center justify-between px-5 py-4 bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div className="flex items-center gap-2.5">
           <Logo size={28} />
-          <span className="font-bold text-sm tracking-tight text-slate-900">Mobiwave ISP</span>
+          <span className="font-bold text-sm tracking-tight text-slate-950">Mobiwave ISP</span>
         </div>
         <div className="flex items-center gap-2">
           {user && (
             <button 
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-1.5 text-slate-600 hover:bg-slate-50 border border-slate-200 rounded-lg"
+              className="p-1.5 text-slate-600 hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors cursor-pointer"
             >
-              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              {mobileMenuOpen ? <X className="w-4.5 h-4.5" /> : <Menu className="w-4.5 h-4.5" />}
             </button>
           )}
         </div>
@@ -182,109 +182,108 @@ export default function App() {
       {/* Authenticated Workspace with Sidebar & Main Page */}
       {user ? (
         <>
-          {/* Left Sidebar Menu */}
+          {/* Left Sidebar Menu - styled to match the screenshot precisely */}
           <aside className={`
-            ${mobileMenuOpen ? 'block' : 'hidden'} 
-            md:flex w-full md:w-64 bg-white border-r border-slate-200 flex-col h-auto md:h-screen sticky top-0 z-40 shrink-0
+            ${mobileMenuOpen ? 'flex' : 'hidden'} 
+            lg:flex w-full lg:w-60 bg-white border-r border-slate-200 flex-col h-screen sticky top-0 z-40 shrink-0
           `}>
             {/* Branding Header */}
-            <div className="p-6 border-b border-slate-200 hidden md:block">
-              <div className="flex items-center gap-3">
-                <Logo size={36} />
-                <div>
-                  <span className="font-bold text-[15px] tracking-tight text-slate-900 block leading-tight">Mobiwave ISP</span>
-                  <span className="text-[10px] text-teal-600 font-semibold block leading-tight mt-0.5">ISP Portal Node</span>
+            <div className="p-5 border-b border-slate-200 hidden lg:block">
+              <div className="flex items-center gap-2.5">
+                <Logo size={32} />
+                <div className="min-w-0">
+                  <span className="font-bold text-[14px] text-slate-950 block tracking-tight leading-none">Mobiwave Inc.</span>
+                  <span className="text-[10px] text-teal-600 font-semibold block leading-tight mt-1">ISP Lead Matrix</span>
                 </div>
               </div>
             </div>
 
             {/* Navigation Body */}
-            <nav className="flex-1 p-4 space-y-6 overflow-y-auto">
+            <nav className="flex-1 p-3 space-y-5 overflow-y-auto">
               
-              {/* Simulator Switcher Section */}
-              <div className="space-y-2">
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2">
-                  Sandbox Simulation Hub
+              {/* Home / Portals Segment */}
+              <div className="space-y-1">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2.5 py-1 mb-1.5">
+                  Home
                 </div>
                 
                 <button
                   onClick={() => { setSimulatedRole('reseller'); setMobileMenuOpen(false); }}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg font-semibold text-xs transition-all text-left ${
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md font-medium text-xs transition-all text-left cursor-pointer ${
                     simulatedRole === 'reseller' 
-                      ? 'bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-100/50' 
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-transparent'
+                      ? 'bg-slate-900 text-white font-semibold shadow-xs' 
+                      : 'text-slate-600 hover:text-slate-950 hover:bg-slate-50'
                   }`}
                 >
-                  <Users className="w-4 h-4 shrink-0" />
-                  <span>Reseller Board (Field Agent)</span>
+                  <Users className={`w-4 h-4 shrink-0 ${simulatedRole === 'reseller' ? 'text-teal-400' : 'text-slate-450'}`} />
+                  <span className="truncate">Reseller Dashboard</span>
                 </button>
 
                 <button
                   onClick={() => { setSimulatedRole('management'); setMobileMenuOpen(false); }}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg font-semibold text-xs transition-all text-left ${
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md font-medium text-xs transition-all text-left cursor-pointer ${
                     simulatedRole === 'management' 
-                      ? 'bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-100/50' 
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-transparent'
+                      ? 'bg-slate-900 text-white font-semibold shadow-xs' 
+                      : 'text-slate-600 hover:text-slate-950 hover:bg-slate-50'
                   }`}
                 >
-                  <BarChart3 className="w-4 h-4 shrink-0" />
-                  <span>Management Deck</span>
+                  <BarChart3 className={`w-4 h-4 shrink-0 ${simulatedRole === 'management' ? 'text-teal-400' : 'text-slate-450'}`} />
+                  <span className="truncate">Management Deck</span>
                 </button>
 
                 <button
                   onClick={() => { setSimulatedRole('admin'); setMobileMenuOpen(false); }}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg font-semibold text-xs transition-all text-left ${
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md font-medium text-xs transition-all text-left cursor-pointer ${
                     simulatedRole === 'admin' 
-                      ? 'bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-100/50' 
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-transparent'
+                      ? 'bg-slate-900 text-white font-semibold shadow-xs' 
+                      : 'text-slate-600 hover:text-slate-950 hover:bg-slate-50'
                   }`}
                 >
-                  <ShieldCheck className="w-4 h-4 shrink-0" />
-                  <span>Administrative Hub</span>
+                  <ShieldCheck className={`w-4 h-4 shrink-0 ${simulatedRole === 'admin' ? 'text-teal-400' : 'text-slate-450'}`} />
+                  <span className="truncate">Administrative Hub</span>
                 </button>
-
               </div>
 
-              {/* Guest Shortcuts */}
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2">
-                  Guest Reference Forms
+              {/* Reference Documents Section */}
+              <div className="space-y-1">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2.5 py-1 mb-1.5">
+                  Documents
                 </div>
                 <button
                   onClick={() => { setShowPublicCreator(true); setMobileMenuOpen(false); }}
-                  className="w-full flex items-center justify-between px-3 py-2 text-slate-600 hover:bg-slate-50 rounded-lg text-xs font-semibold text-left transition-all"
+                  className="w-full flex items-center justify-between px-2.5 py-2 text-slate-600 hover:text-slate-950 hover:bg-slate-50 rounded-md text-xs font-medium text-left transition-all cursor-pointer"
                 >
-                  <span className="flex items-center gap-2">
-                    <Link className="w-3.5 h-3.5" />
-                    Request support form
+                  <span className="flex items-center gap-2.5 min-w-0">
+                    <Link className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span className="truncate">Support Form</span>
                   </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                  <ChevronRight className="w-3 h-3 text-slate-400 shrink-0" />
                 </button>
               </div>
 
-              {/* Useful Guidelines indicator */}
-              <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl space-y-1">
-                <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wide">Ledger Status</span>
-                <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
-                  {spreadsheetId ? "✓ Google Workspace Sheets connected successfully." : "⚠️ Sheets integration waiting for creation."}
+              {/* Sync State Card */}
+              <div className="p-3 bg-slate-50/70 border border-slate-200/50 rounded-lg space-y-1">
+                <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Sync State</span>
+                <p className="text-[10px] text-slate-600 leading-relaxed font-semibold">
+                  {spreadsheetId ? "✓ Workspace Connected." : "⚠️ Sheets setup required."}
                 </p>
               </div>
 
             </nav>
 
-            {/* Profile widget footer in aside wrapper */}
-            <div className="p-4 bg-slate-50 border-t border-slate-200 mt-auto flex items-center justify-between">
+            {/* Profile widget footer */}
+            <div className="p-3 bg-slate-50/80 border-t border-slate-200 mt-auto flex items-center justify-between gap-2">
               <div className="flex items-center gap-2.5 min-w-0">
                 {user.photoURL ? (
-                  <img src={user.photoURL} alt="pfp" className="w-8 h-8 rounded-full border border-slate-200 shrink-0" referrerPolicy="no-referrer" />
+                  <img src={user.photoURL} alt="profile" className="w-7.5 h-7.5 rounded-full border border-slate-200 shrink-0" referrerPolicy="no-referrer" />
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-indigo-200 text-indigo-800 font-bold flex items-center justify-center text-xs shrink-0">
+                  <div className="w-7.5 h-7.5 rounded-full bg-slate-200 text-slate-850 font-bold flex items-center justify-center text-xs shrink-0">
                     {user.displayName?.charAt(0) || user.email?.charAt(0).toUpperCase() || 'A'}
                   </div>
                 )}
                 <div className="min-w-0">
-                  <p className="text-xs font-bold text-slate-800 truncate">{user.displayName || 'Coast Reseller'}</p>
-                  <p className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-wider truncate">
+                  <p className="text-[11.5px] font-bold text-slate-850 truncate leading-none mb-1">{user.displayName || 'Coastal Agent'}</p>
+                  <p className="text-[9px] font-mono text-slate-400 uppercase tracking-widest truncate leading-none">
                     {simulatedRole}
                   </p>
                 </div>
@@ -292,10 +291,10 @@ export default function App() {
 
               <button 
                 onClick={handleLogout}
-                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-105 rounded-md transition-colors cursor-pointer"
                 title="Sign out of workspace"
               >
-                <LogOut className="w-4 h-4" />
+                <LogOut className="w-3.5 h-3.5" />
               </button>
             </div>
           </aside>
