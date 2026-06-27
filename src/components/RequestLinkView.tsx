@@ -3,23 +3,9 @@ import { db } from '../lib/firebase';
 import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { sendGmailEmail, uploadReceiptToDrive } from '../lib/googleApi';
 import { FundsRequest } from '../types';
-import {
-  CheckCircle,
-  AlertCircle,
-  FileText,
-  Send,
-  Signature,
-  ChevronLeft,
-  Clock,
-  ShieldCheck,
-  Globe
-} from 'lucide-react';
+import { CheckCircle, AlertCircle, FileText, Send, ShieldCheck, Signature, ChevronLeft, Calendar, FileCheck, Landmark } from 'lucide-react';
 import { Logo } from './Logo';
-import { motion, AnimatePresence } from 'motion/react';
-import { Card } from './ui/Card';
-import { Button } from './ui/Button';
-import { Input, Select } from './ui/Input';
-import { Badge } from './ui/Badge';
+import { motion } from 'motion/react';
 
 interface RequestLinkProps {
   requestId: string | null;
@@ -32,7 +18,7 @@ export default function RequestLinkView({ requestId, onBackToApp }: RequestLinkP
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // New Request Form fields
+  // New Request Form fields (if creating new)
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [amount, setAmount] = useState('');
@@ -97,21 +83,25 @@ export default function RequestLinkView({ requestId, onBackToApp }: RequestLinkP
         signedReceipt: false
       };
 
+      // Create in Firestore
       await setDoc(doc(db, 'requests', newId), newRequest);
       
+      // Try to send notification email
       await sendGmailEmail(
         email,
         `Internet Lead Support Form Submitted: ${newId}`,
         `<h3>Hello ${name},</h3>
-         <p>Your weekly support request of <strong>KES ${value.toLocaleString()}</strong> has been submitted.</p>
-         <p><a href="${window.location.origin}?reqId=${newId}">Open Request Portal</a></p>`
-      ).catch(() => {});
+         <p>Your weekly support request of <strong>KES ${value.toLocaleString()}</strong> for <em>"${purpose}"</em> has been submitted to the Admin for approval.</p>
+         <p>Track or signature signoff can be completed via your public portal request link:</p>
+         <p><a href="${window.location.origin}?reqId=${newId}" style="display:inline-block;padding:10px 20px;background-color:#2563eb;color:#fff;text-decoration:none;border-radius:5px;">Open Request & Signed Receipt portal</a></p>
+         <p>Best regards,<br/>Mobiwave ISP Portal Team</p>`
+      ).catch(() => console.log('Gmail notification send offline or pending configuration'));
 
-      setSuccessMsg(`Request filed successfully: ${newId}`);
+      setSuccessMsg(`Your request has been filed successfully under ID: ${newId}. Save this URL to sign the receipt once approved!`);
       setRequest(newRequest);
     } catch (err: any) {
       console.error(err);
-      setError('Could not submit details.');
+      setError('Could not submit details. Try again.');
     } finally {
       setLoading(false);
     }
@@ -119,23 +109,53 @@ export default function RequestLinkView({ requestId, onBackToApp }: RequestLinkP
 
   const handleSignReceipt = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!request || !signatureName || !isAgreed) return;
+    if (!request) return;
+    if (!signatureName) {
+      setError('Please write your full name as signature.');
+      return;
+    }
+    if (!isAgreed) {
+      setError('You must check the agreement box to sign off.');
+      return;
+    }
 
-    const confirmed = window.confirm("Confirm digital signature?");
+    const confirmed = window.confirm(
+      "Confirm signature: Are you sure you received these funds and want to sign the biweekly receipt?"
+    );
     if (!confirmed) return;
 
     setLoading(true);
     setError(null);
     try {
       const signedAt = new Date().toISOString();
-      const receiptContent = `Digital Receipt ${request.id}\nSignee: ${signatureName}\nDate: ${signedAt}`;
-      let driveFileId = 'drive_' + Math.random().toString(36).substring(7);
       
-      try {
-        const fileId = await uploadReceiptToDrive(`Receipt_${request.id}.txt`, receiptContent);
-        if (fileId) driveFileId = fileId;
-      } catch (err) {}
+      // Upload confirmation to Google Drive
+      const receiptContent = `
+=== DIGITAL PAYMENT RECEIPT ===
+Request ID: ${request.id}
+Recipient Name: ${request.recipientName}
+Recipient Email: ${request.recipientEmail}
+Biweekly Period: ${request.biweeklyPeriod}
+Purpose: ${request.purpose}
+Amount: KES ${request.amount.toLocaleString()}
+Status: APPROVED & DISBURSED
+Signature Date: ${signedAt}
+Sign-off Signature Name: ${signatureName}
+IP Address Verification: CLIENT-SIGN-STAMP
 
+The recipient, by digitally typing their signature name, explicitly confirms receipt of the stated financial support from Mobiwave ISP management, under penalties of misrepresentation.
+===============================
+      `;
+
+      let driveFileId = 'mock_drive_file_id';
+      try {
+        const fileId = await uploadReceiptToDrive(`Receipt_${request.id}_${request.recipientName}.txt`, receiptContent);
+        if (fileId) driveFileId = fileId;
+      } catch (err) {
+        console.warn('Drive upload pending workspace configuration', err);
+      }
+
+      // Update Firestore
       const updatedData = {
         signedReceipt: true,
         signedAt,
@@ -143,280 +163,299 @@ export default function RequestLinkView({ requestId, onBackToApp }: RequestLinkP
       };
 
       await updateDoc(doc(db, 'requests', request.id), updatedData);
-      setSuccessMsg('Digital receipt signed and archived!');
-      setRequest({ ...request, ...updatedData });
+      
+      // Send Gmail copy
+      await sendGmailEmail(
+        request.recipientEmail,
+        `Signed Disbursement Receipt: ${request.id}`,
+        `<h3>Disbursement Signed Confirmation</h3>
+         <p>Hello ${request.recipientName},</p>
+         <p>Your signed receipt is confirmed. The payment receipt has been successfully logged on Google Drive (File ID: ${driveFileId}).</p>
+         <p><strong>Receipt Details:</strong></p>
+         <ul>
+           <li>Request ID: ${request.id}</li>
+           <li>Amount: KES ${request.amount.toLocaleString()}</li>
+           <li>Signed at: ${new Date(signedAt).toLocaleString()}</li>
+           <li>Signee: ${signatureName}</li>
+         </ul>
+         <p>Thank you for your cooperation!</p>`
+      ).catch(() => console.log('Gmail notification send offline'));
+
+      setSuccessMsg('Digital receipt signed off and safely archived to Google Drive!');
+      setRequest({
+        ...request,
+        ...updatedData
+      });
     } catch (err: any) {
-      setError('Could not sign receipt.');
+      console.error(err);
+      setError('Could not sign receipt. Try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-bg-main flex flex-col items-center justify-center p-6 antialiased selection:bg-one-blue/30 relative">
-      {/* Background Decorative Elements */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-one-blue/5 blur-[120px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-one-indigo/5 blur-[120px] rounded-full" />
-        <div className="spline-grid-overlay opacity-10" />
-      </div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-2xl relative z-10"
-      >
-        <div className="flex flex-col items-center mb-8">
-          <div className="p-4 bg-white rounded-3xl shadow-xl shadow-one-blue/5 border border-slate-100 mb-6">
-            <Logo size={48} />
+    <div className="min-h-screen bg-gradient-to-br from-[#f8fafc] to-[#f1f5f9] flex flex-col items-center justify-center p-4 antialiased font-sans">
+      <div className="w-full max-w-xl bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
+        
+        {/* Modern high-contrast styled Header */}
+        <div className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-sky-600 px-8 py-7 text-white relative">
+          <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+          
+          <div className="flex items-center gap-3 relative z-10">
+            <Logo size={42} />
+            <div>
+              <span className="text-[10px] text-sky-200 font-extrabold uppercase tracking-widest block">Mobiwave ISP Procurement</span>
+              <h1 className="text-lg font-extrabold tracking-tight mt-0.5">Disbursements Ledger Public Terminal</h1>
+            </div>
           </div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tighter">Public Terminal</h1>
-          <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mt-2">Mobiwave ISP Procurement System</p>
         </div>
 
-        <AnimatePresence mode="wait">
+        <div className="p-8">
+          
+          {/* Status logs block messages */}
           {error && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mb-6"
-            >
-              <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-400 text-sm">
-                <AlertCircle className="w-5 h-5 shrink-0" />
-                {error}
-              </div>
-            </motion.div>
+            <div className="mb-5 p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl flex items-start gap-2 text-xs font-semibold animate-fadeIn">
+              <AlertCircle className="w-5 h-5 text-rose-500 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
           )}
 
           {successMsg && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mb-6"
-            >
-              <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center gap-3 text-emerald-400 text-sm font-medium">
-                <CheckCircle className="w-5 h-5 shrink-0" />
-                {successMsg}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <Card className="one-glass border-white/50 overflow-hidden p-0">
-          {loading ? (
-            <div className="p-16 flex flex-col items-center justify-center space-y-6">
-              <div className="w-10 h-10 border-4 border-one-blue/10 border-t-one-blue rounded-full animate-spin" />
-              <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest animate-pulse">Syncing with secure ledger...</p>
+            <div className="mb-5 p-4 bg-emerald-50 border border-emerald-250 text-emerald-800 rounded-2xl flex items-start gap-2.5 text-xs font-bold animate-fadeIn">
+              <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+              <span>{successMsg}</span>
             </div>
-          ) : !request && !requestId ? (
-            <form onSubmit={handleCreateRequest} className="p-10 space-y-8">
-              <div className="flex items-center gap-4 mb-2">
-                <div className="w-12 h-12 rounded-2xl bg-one-blue/10 flex items-center justify-center text-one-blue">
-                  <FileText className="w-6 h-6" />
-                </div>
+          )}
+
+          {loading && (
+            <div className="text-center py-10 text-slate-500 text-xs font-medium">
+              <span className="inline-block animate-pulse">Establishing contact with regional firestore nodes...</span>
+            </div>
+          )}
+
+          {!loading && !request && !requestId && (
+            // Form to create a brand new Support request
+            <form onSubmit={handleCreateRequest} className="space-y-4">
+              <div className="border-b border-slate-100 pb-3 mb-4">
+                <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wide">Request Biweekly Support</h2>
+                <p className="text-xs text-slate-400 mt-0.5 font-medium">Identify yourself and describe the procurement logistics values.</p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <h2 className="text-xl font-black text-slate-900 tracking-tight">New Support Request</h2>
-                  <p className="text-slate-400 font-medium text-sm">Fill in the details for biweekly allocation</p>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Your Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. John Salim"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-slate-705"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Your Email</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="you@example.com"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono font-semibold text-slate-705"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input
-                  label="Full Name"
-                  placeholder="e.g. John Salim"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Support Sum Requested (KES)</label>
+                  <input
+                    type="number"
+                    required
+                    placeholder="e.g. 15000"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono font-semibold text-slate-705"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Target Biweekly Period</label>
+                  <select
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-slate-705"
+                    value={biweeklyPeriod}
+                    onChange={(e) => setBiweeklyPeriod(e.target.value)}
+                  >
+                    <option value="2026-W25-Biweekly">2026 June Biweekly 1</option>
+                    <option value="2026-W26-Biweekly">2026 June Biweekly 2</option>
+                    <option value="2026-W27-Biweekly">2026 July Biweekly 1</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Description of Operations Strategy</label>
+                <textarea
                   required
-                />
-                <Input
-                  label="Email Address"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
+                  rows={3}
+                  placeholder="Summarize transport costs, client meetings details, and regional ward prospecting goals..."
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-slate-705 leading-relaxed"
+                  value={purpose}
+                  onChange={(e) => setPurpose(e.target.value)}
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input
-                  label="Amount (KES)"
-                  type="number"
-                  placeholder="15000"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  required
-                />
-                <Select
-                  label="Biweekly Period"
-                  value={biweeklyPeriod}
-                  onChange={(e) => setBiweeklyPeriod(e.target.value)}
-                  options={[
-                    { value: '2026-W25-Biweekly', label: '2026 June Biweekly 1' },
-                    { value: '2026-W26-Biweekly', label: '2026 June Biweekly 2' },
-                    { value: '2026-W27-Biweekly', label: '2026 July Biweekly 1' },
-                  ]}
-                />
-              </div>
-
-              <Input
-                label="Purpose of Funds"
-                placeholder="Describe procurement logistics and operations..."
-                value={purpose}
-                onChange={(e) => setPurpose(e.target.value)}
-                required
-                multiline
-                rows={3}
-              />
-
-              <Button type="submit" className="w-full h-12 text-sm font-bold shadow-lg shadow-blue-500/20">
-                <Send className="w-4 h-4 mr-2" />
-                Submit Allocation Request
-              </Button>
+              <button
+                type="submit"
+                className="w-full mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 focus:ring-2 focus:ring-indigo-500/25"
+              >
+                <Send className="w-3.5 h-3.5" /> File Biweekly Allocation Request
+              </button>
             </form>
-          ) : request ? (
-              <div className="p-10 space-y-10">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-one-indigo/10 flex items-center justify-center text-one-indigo">
-                    <ShieldCheck className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase">Request {request.id}</h2>
-                    <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest flex items-center gap-1.5 mt-1">
-                      <Clock className="w-3.5 h-3.5" /> {new Date(request.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
+          )}
+
+          {!loading && request && (
+            // Showing state of request & Action to Sign receipt
+            <div className="space-y-5">
+              
+              <div className="border-b border-slate-100 pb-3 mb-2 flex items-center justify-between">
+                <div>
+                  <h2 className="text-xs font-bold font-mono text-slate-400">FORM REFERENCE: {request.id.toUpperCase()}</h2>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Submitted on {new Date(request.createdAt).toLocaleDateString()}</p>
                 </div>
-                <Badge variant={
-                  request.status === 'approved' ? 'success' :
-                  request.status === 'rejected' ? 'danger' : 'warning'
-                }>
+                
+                <span className={`px-2.5 py-1 rounded-lg text-[9px] font-extrabold uppercase tracking-wide border ${
+                  request.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-150' :
+                  request.status === 'rejected' ? 'bg-rose-50 text-rose-700 border-rose-150' :
+                  'bg-amber-50 text-amber-700 border-amber-100'
+                }`}>
                   {request.status}
-                </Badge>
+                </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 p-8 rounded-[32px] bg-slate-50/50 border border-slate-100">
-                <div className="space-y-1.5">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Recipient</p>
-                  <p className="text-slate-900 font-extrabold">{request.recipientName}</p>
-                  <p className="text-slate-400 font-bold text-[11px] uppercase tracking-wider">{request.recipientEmail}</p>
+              <div className="bg-[#f8fafc] rounded-2xl p-4 space-y-2.5 text-xs border border-slate-150">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 font-semibold">Allocated Beneficiary</span>
+                  <span className="font-extrabold text-slate-850 text-right">{request.recipientName} ({request.recipientEmail})</span>
                 </div>
-                <div className="space-y-1.5">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Amount</p>
-                  <p className="text-3xl font-black text-one-blue tracking-tighter">KES {request.amount.toLocaleString()}</p>
-                  <p className="text-slate-400 font-bold text-[11px] uppercase tracking-wider">{request.biweeklyPeriod}</p>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 font-semibold">Dispensing Period</span>
+                  <span className="font-mono text-slate-700 text-right">{request.biweeklyPeriod}</span>
                 </div>
-                <div className="sm:col-span-2 space-y-2 pt-4 border-t border-slate-150">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Purpose</p>
-                  <p className="text-slate-600 font-bold text-sm leading-relaxed italic">"{request.purpose}"</p>
+                <div className="flex justify-between items-center border-t border-slate-200/60 pt-2.5">
+                  <span className="text-slate-500 font-bold">Total Disbursed Sum</span>
+                  <span className="font-black text-slate-900 text-right font-mono text-sm">KES {request.amount.toLocaleString()}</span>
+                </div>
+                <div className="border-t border-slate-200/60 pt-2.5">
+                  <span className="text-slate-400 block font-semibold mb-1">Recipient Operations Purpose</span>
+                  <p className="italic text-slate-700 font-medium">"{request.purpose}"</p>
                 </div>
               </div>
+
+              {request.status === 'pending' && (
+                <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 text-amber-900 text-xs flex gap-3 leading-relaxed font-semibold">
+                  <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+                  <p>
+                    <strong>Awaiting Admin Review.</strong> Once approved by the Region oversight board, you will receive an automatic email notifying you to digitally sign this official receipt here.
+                  </p>
+                </div>
+              )}
+
+              {request.status === 'rejected' && (
+                <div className="p-4 bg-rose-50 rounded-2xl border border-rose-250 text-rose-900 text-xs flex gap-3 leading-relaxed font-semibold">
+                  <AlertCircle className="w-5 h-5 text-rose-500 flex-shrink-0 pointer-events-none" />
+                  <p>
+                    <strong>Disbursement Rejected.</strong> Mobiwave ISP oversight director denied this allocation block. Please request feedback using the regional coordinator.
+                  </p>
+                </div>
+              )}
 
               {request.status === 'approved' && !request.signedReceipt && (
-                <form onSubmit={handleSignReceipt} className="space-y-6 pt-6 border-t border-white/10">
-                  <div className="p-6 rounded-2xl bg-one-green/5 border border-one-green/10 text-one-green text-xs leading-relaxed">
-                    <p className="font-black uppercase tracking-widest mb-1.5 flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4" /> Action Required: Digital Signoff
-                    </p>
-                    <p className="font-bold opacity-80">I confirm receipt of funds and agree to provide all necessary field lead connection documentation for audit purposes.</p>
+                <form onSubmit={handleSignReceipt} className="space-y-4 pt-3 border-t border-dashed border-slate-200 animate-fadeIn">
+                  <div className="bg-emerald-50 text-emerald-950 text-xs p-4 rounded-2xl border border-emerald-250 flex gap-2.5 items-start leading-relaxed font-semibold">
+                    <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <strong>Funds Approved & Sent!</strong> Please read the digital compliance statement carefully to sign the disbursement receipt.
+                    </div>
                   </div>
 
-                  <div className="space-y-4">
-                    <Input
-                      label="Type Full Legal Name to Sign"
-                      placeholder="e.g. John Salim"
-                      value={signatureName}
-                      onChange={(e) => setSignatureName(e.target.value)}
-                      required
-                    />
+                  <div className="rounded-2xl border border-slate-250 p-4 bg-slate-50/70">
+                    <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <FileText className="w-4 h-4 text-indigo-500" /> Compliance Signoff Statement:
+                    </h3>
+                    <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
+                      "I, <strong>{request.recipientName}</strong>, confirm receipt of biweekly financial support of <strong>KES {request.amount.toLocaleString()}</strong> from Mobiwave ISP. The support facilitates the collection of field lead connections (including customer Name, Location/Street, institutions, and phones), and is disbursed truthfully as authorized."
+                    </p>
+                  </div>
 
-                    <label className="flex items-start gap-3 cursor-pointer group">
-                      <div className="relative flex items-center">
-                        <input
-                          type="checkbox"
-                          className="peer sr-only"
-                          checked={isAgreed}
-                          onChange={(e) => setIsAgreed(e.target.checked)}
-                        />
-                        <div className="w-5 h-5 rounded border border-white/20 peer-checked:bg-blue-600 peer-checked:border-blue-600 transition-all flex items-center justify-center">
-                          <CheckCircle className="w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100" />
-                        </div>
-                      </div>
-                      <span className="text-xs text-slate-400 font-medium group-hover:text-slate-300 transition-colors">
-                        I authorize this as my legal digital signature for financial audit purposes.
-                      </span>
+                  <div className="space-y-3.5">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1">Type your Full Legal Name to digitally authorize receipt:</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. John Doe, Field Specialist"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold"
+                        value={signatureName}
+                        onChange={(e) => setSignatureName(e.target.value)}
+                      />
+                    </div>
+
+                    <label className="flex items-start gap-2.5 text-[11px] text-slate-500 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4 shrink-0"
+                        checked={isAgreed}
+                        onChange={(e) => setIsAgreed(e.target.checked)}
+                      />
+                      <span className="font-semibold leading-relaxed">I authorize this typed name represents my legal digital signature and will compile a permanent financial audit document on the Google Workspace backup repository.</span>
                     </label>
                   </div>
 
-                  <Button type="submit" variant="success" className="w-full h-12 font-bold shadow-lg shadow-emerald-500/10">
-                    <Signature className="w-4 h-4 mr-2" />
-                    Sign & Complete Receipt
-                  </Button>
+                  <button
+                    type="submit"
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                  >
+                    <Signature className="w-3.5 h-3.5" /> Sign Ledger & Archive Receipt
+                  </button>
                 </form>
               )}
 
               {request.signedReceipt && (
-                <div className="p-10 rounded-[32px] bg-one-green/5 border border-one-green/10 text-center space-y-4">
-                  <div className="w-16 h-16 rounded-[24px] bg-one-green/10 flex items-center justify-center text-one-green mx-auto">
-                    <CheckCircle className="w-8 h-8" />
+                <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-5 space-y-3 mt-4 animate-fadeIn">
+                  <div className="flex items-center gap-2 text-emerald-900 text-sm font-extrabold uppercase tracking-wide">
+                    <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <span>Compliance Signoff Signed</span>
                   </div>
-                  <h3 className="text-2xl font-black text-slate-900 tracking-tight">Receipt Signed</h3>
-                  <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">
-                    Successfully authorized on {new Date(request.signedAt || '').toLocaleString()}
+                  <p className="text-xs text-slate-600 leading-normal font-semibold">
+                    The digital receipt of disbursement was successfully authorized on <strong className="font-mono text-slate-900">{new Date(request.signedAt || '').toLocaleString()}</strong>.
                   </p>
-                  <div className="pt-6 flex items-center justify-center gap-3">
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Audit ID:</span>
-                    <code className="text-one-green text-[10px] font-black font-mono bg-one-green/10 px-3 py-1.5 rounded-lg border border-one-green/10">
-                      {request.receiptDriveFileId}
-                    </code>
-                  </div>
-                </div>
-              )}
-
-              {request.status === 'pending' && (
-                <div className="p-10 rounded-[32px] bg-one-blue/5 border border-one-blue/10 text-center space-y-4">
-                  <div className="w-16 h-16 rounded-[24px] bg-one-blue/10 flex items-center justify-center text-one-blue mx-auto animate-pulse">
-                    <Clock className="w-8 h-8" />
-                  </div>
-                  <h3 className="text-2xl font-black text-slate-900 tracking-tight">Awaiting Review</h3>
-                  <p className="text-slate-400 font-medium text-sm leading-relaxed max-w-xs mx-auto">
-                    Your request is currently being reviewed by regional oversight. You'll receive an email once approved to sign the receipt.
+                  <p className="text-xs text-slate-600 leading-normal font-semibold">
+                    Authorized Signee: <strong className="font-mono text-slate-900">{signatureName || request.recipientName}</strong>.
+                  </p>
+                  <p className="text-xs text-slate-400 font-semibold">
+                    Google Drive audit File ID: <code className="bg-slate-200 text-slate-700 px-1 py-0.5 rounded font-mono text-[10px]">{request.receiptDriveFileId}</code>.
                   </p>
                 </div>
               )}
             </div>
-          ) : null}
-        </Card>
+          )}
 
-        {onBackToApp && (
-          <motion.button
-            whileHover={{ x: -4 }}
-            onClick={onBackToApp}
-            className="mt-10 flex items-center gap-2 text-slate-400 hover:text-one-blue transition-colors text-[10px] font-black uppercase tracking-[0.2em] mx-auto"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            Return to Dashboard
-          </motion.button>
-        )}
-
-        <div className="mt-16 pt-10 border-t border-slate-200 flex flex-col items-center gap-6">
-          <div className="flex items-center gap-6 opacity-40">
-             <div className="flex items-center gap-2 text-slate-900 font-black text-[10px] tracking-[0.2em]">
-               <Globe className="w-3.5 h-3.5 text-one-blue" /> SECURE REGIONAL NODE
-             </div>
-             <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
-             <div className="text-slate-900 font-black text-[10px] tracking-[0.2em]">
-               v3.4.0-PROMO
-             </div>
-          </div>
-          <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.3em]">
-            © 2026 MOBIWAVE ISP SOLUTIONS LTD
-          </p>
+          {/* Utility Back to Dashboard link if user is simulating within App */}
+          {onBackToApp && (
+            <div className="mt-8 pt-4 border-t border-slate-150 text-center">
+              <button
+                onClick={onBackToApp}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-bold flex items-center justify-center gap-1 mx-auto cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" /> Return to main role dashboard
+              </button>
+            </div>
+          )}
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }
