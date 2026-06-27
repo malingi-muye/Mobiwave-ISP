@@ -21,13 +21,13 @@ export const Input: React.FC<InputProps> = ({ label, error, icon, className = ''
       <div className="relative">
         {icon && <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{icon}</div>}
         {multiline ? (
-          <textarea
+          <textarea 
             className={baseClasses}
             rows={rows || 3}
             {...(props as React.TextareaHTMLAttributes<HTMLTextAreaElement>)}
           />
         ) : (
-          <input
+          <input 
             className={baseClasses}
             {...(props as React.InputHTMLAttributes<HTMLInputElement>)}
           />
@@ -42,7 +42,7 @@ export const Select: React.FC<React.SelectHTMLAttributes<HTMLSelectElement> & { 
   return (
     <div className="space-y-1.5 w-full">
       {label && <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">{label}</label>}
-      <select
+      <select 
         className={`
           w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-800
           focus:outline-none focus:ring-2 focus:ring-one-blue/20 focus:border-one-blue
