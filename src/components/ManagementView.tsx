@@ -149,13 +149,16 @@ export default function ManagementView({ currentUser }: ManagementViewProps) {
   const pendingReviews = reports.filter(r => r.status === 'pending_review').length;
 
   // Restore dynamic data for chart
-  const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const dailyLeads = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+  const weekDayMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const displayDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const dailyLeads: Record<string, number> = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+
   leads.forEach(l => {
-    const day = weekDays[new Date(l.dateAdded).getDay() - 1] || 'Mon';
-    (dailyLeads as any)[day]++;
+    const dayIndex = new Date(l.dateAdded).getDay();
+    const dayName = weekDayMap[dayIndex];
+    if (dayName in dailyLeads) dailyLeads[dayName]++;
   });
-  const chartData = weekDays.map(d => (dailyLeads as any)[d]);
+  const chartData = displayDays.map(d => dailyLeads[d]);
   const maxLeads = Math.max(...chartData, 1);
 
   return (

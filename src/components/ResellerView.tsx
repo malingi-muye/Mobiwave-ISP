@@ -194,14 +194,17 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
   const leadTarget = kpis.find(k => k.kpiName.toLowerCase().includes('lead'))?.targetValue || 0;
   const leadProgress = leadTarget > 0 ? Math.min(100, (leadsCount / leadTarget) * 100) : 0;
 
-  // Chart Data
-  const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const dailyRev: any = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+  // Chart Data - Mon to Sun
+  const weekDayMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const displayDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const dailyRev: Record<string, number> = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+
   leads.forEach(l => {
-    const day = weekDays[new Date(l.dateAdded).getDay()];
-    if (day in dailyRev) dailyRev[day] += l.revenueCollected;
+    const dayIndex = new Date(l.dateAdded).getDay();
+    const dayName = weekDayMap[dayIndex];
+    if (dayName in dailyRev) dailyRev[dayName] += l.revenueCollected;
   });
-  const trendPoints = Object.values(dailyRev) as number[];
+  const trendPoints = displayDays.map(d => dailyRev[d]);
   const maxTrend = Math.max(...trendPoints, 1000);
 
   // Pagination
