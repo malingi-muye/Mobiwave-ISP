@@ -114,7 +114,7 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
       
       if (spreadsheetId) {
         await addSpreadsheetRow(spreadsheetId, 'Leads Log', [
-          docRef.id, newLead.resellerName, newLead.clientName, newLead.location,
+          docRef.id, newLead.resellerName, newLead.clientName, newLead.location, 
           newLead.institution, newLead.contactNumber, newLead.revenueCollected, new Date(newLead.dateAdded).toLocaleString()
         ]).catch(e => console.warn('Sheet sync deferred', e));
       }
@@ -194,14 +194,17 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
   const leadTarget = kpis.find(k => k.kpiName.toLowerCase().includes('lead'))?.targetValue || 0;
   const leadProgress = leadTarget > 0 ? Math.min(100, (leadsCount / leadTarget) * 100) : 0;
 
-  // Chart Data
-  const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const dailyRev: any = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+  // Chart Data - Mon to Sun
+  const weekDayMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const displayDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const dailyRev: Record<string, number> = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+  
   leads.forEach(l => {
-    const day = weekDays[new Date(l.dateAdded).getDay()];
-    if (day in dailyRev) dailyRev[day] += l.revenueCollected;
+    const dayIndex = new Date(l.dateAdded).getDay();
+    const dayName = weekDayMap[dayIndex];
+    if (dayName in dailyRev) dailyRev[dayName] += l.revenueCollected;
   });
-  const trendPoints = Object.values(dailyRev) as number[];
+  const trendPoints = displayDays.map(d => dailyRev[d]);
   const maxTrend = Math.max(...trendPoints, 1000);
 
   // Pagination
@@ -236,9 +239,9 @@ export default function ResellerView({ user, userArea = 'Mombasa', spreadsheetId
            <div className="h-48 mt-4 flex items-end justify-between px-8 pb-8">
              {trendPoints.map((val, i) => (
                <div key={i} className="w-12 bg-one-blue/10 rounded-2xl relative group/bar transition-all hover:bg-one-blue/20 h-full">
-                 <motion.div
-                   initial={{ height: 0 }}
-                   animate={{ height: `${(val / maxTrend) * 100}%` }}
+                 <motion.div 
+                   initial={{ height: 0 }} 
+                   animate={{ height: `${(val / maxTrend) * 100}%` }} 
                    className="absolute bottom-0 left-0 w-full bg-one-blue rounded-2xl shadow-lg shadow-one-blue/20"
                  />
                  <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-black text-one-blue opacity-0 group-hover/bar:opacity-100 transition-opacity">

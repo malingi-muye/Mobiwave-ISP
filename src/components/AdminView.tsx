@@ -86,12 +86,12 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
     setError(null);
     try {
       await updateDoc(doc(db, 'users', uid), {
-        displayName: editDisplayName,
-        role: editRole,
+        displayName: editDisplayName, 
+        role: editRole, 
         area: editRole === 'reseller' ? editArea : null
       });
       setSuccess(`Profile updated!`);
-      setEditingProfileId(null);
+      setEditingProfileId(null); 
       await fetchAdminData();
     } catch (err) {
       console.error('Update profile error:', err);
@@ -125,10 +125,10 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
       const resellerUser = profiles.find(p => p.uid === taskReseller);
       const planId = `plan_${taskReseller}_${taskWeekStart}`;
       await setDoc(doc(db, 'plans', planId), {
-        id: planId,
-        resellerId: taskReseller,
-        weekStartDate: taskWeekStart,
-        objective: taskObjective,
+        id: planId, 
+        resellerId: taskReseller, 
+        weekStartDate: taskWeekStart, 
+        objective: taskObjective, 
         tasks: taskDailyBreakdown
       });
 
@@ -151,8 +151,8 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
       }
 
       setSuccess(`Task dispatched and synced!`);
-      setTaskObjective('');
-      setTaskDailyBreakdown('');
+      setTaskObjective(''); 
+      setTaskDailyBreakdown(''); 
       await fetchAdminData();
     } catch (err) {
       console.error('Task assignment error:', err);
@@ -414,8 +414,8 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
               <Input label="Start Date" type="date" value={taskWeekStart} onChange={(e) => setTaskWeekStart(e.target.value)} />
             </div>
             <Input label="Objective" value={taskObjective} onChange={(e) => setTaskObjective(e.target.value)} placeholder="Expand Kilifi units..." />
-            <textarea
-              className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-800 h-20 outline-none focus:ring-2 focus:ring-one-blue/20"
+            <textarea 
+              className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-800 h-20 outline-none focus:ring-2 focus:ring-one-blue/20" 
               placeholder="Daily directives..."
               value={taskDailyBreakdown}
               onChange={(e) => setTaskDailyBreakdown(e.target.value)}

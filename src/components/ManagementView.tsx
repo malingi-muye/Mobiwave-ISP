@@ -149,13 +149,16 @@ export default function ManagementView({ currentUser }: ManagementViewProps) {
   const pendingReviews = reports.filter(r => r.status === 'pending_review').length;
 
   // Restore dynamic data for chart
-  const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const dailyLeads = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+  const weekDayMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const displayDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const dailyLeads: Record<string, number> = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+  
   leads.forEach(l => {
-    const day = weekDays[new Date(l.dateAdded).getDay() - 1] || 'Mon';
-    (dailyLeads as any)[day]++;
+    const dayIndex = new Date(l.dateAdded).getDay();
+    const dayName = weekDayMap[dayIndex];
+    if (dayName in dailyLeads) dailyLeads[dayName]++;
   });
-  const chartData = weekDays.map(d => (dailyLeads as any)[d]);
+  const chartData = displayDays.map(d => dailyLeads[d]);
   const maxLeads = Math.max(...chartData, 1);
 
   return (
@@ -185,13 +188,13 @@ export default function ManagementView({ currentUser }: ManagementViewProps) {
                <button className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400">30 Days</button>
              </div>
            </CardHeader>
-
+           
            <div className="h-64 mt-4 flex items-end justify-between px-8 pb-8">
              {chartData.map((val, i) => (
                <div key={i} className="w-12 bg-one-blue/10 rounded-2xl relative group/bar transition-all hover:bg-one-blue/20">
-                 <motion.div
-                   initial={{ height: 0 }}
-                   animate={{ height: `${(val / maxLeads) * 100}%` }}
+                 <motion.div 
+                   initial={{ height: 0 }} 
+                   animate={{ height: `${(val / maxLeads) * 100}%` }} 
                    className="absolute bottom-0 left-0 w-full bg-one-blue rounded-2xl shadow-lg shadow-one-blue/20"
                  />
                  <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-bold text-one-blue opacity-0 group-hover/bar:opacity-100 transition-opacity">
@@ -313,8 +316,8 @@ export default function ManagementView({ currentUser }: ManagementViewProps) {
                 </div>
                 {report.status === 'pending_review' ? (
                   <div className="pt-4 border-t border-slate-50 space-y-3">
-                    <textarea
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-800 h-20 outline-none focus:ring-2 focus:ring-one-blue/20"
+                    <textarea 
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold text-slate-800 h-20 outline-none focus:ring-2 focus:ring-one-blue/20" 
                       placeholder="Supervisor feedback..."
                       value={writtenFeedback}
                       onChange={(e) => setWrittenFeedback(e.target.value)}

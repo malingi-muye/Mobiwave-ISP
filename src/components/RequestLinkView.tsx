@@ -3,13 +3,13 @@ import { db } from '../lib/firebase';
 import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { sendGmailEmail, uploadReceiptToDrive } from '../lib/googleApi';
 import { FundsRequest } from '../types';
-import {
-  CheckCircle,
-  AlertCircle,
-  FileText,
-  Send,
-  Signature,
-  ChevronLeft,
+import { 
+  CheckCircle, 
+  AlertCircle, 
+  FileText, 
+  Send, 
+  Signature, 
+  ChevronLeft, 
   Clock,
   ShieldCheck,
   Globe
@@ -161,7 +161,7 @@ export default function RequestLinkView({ requestId, onBackToApp }: RequestLinkP
         <div className="spline-grid-overlay opacity-10" />
       </div>
 
-      <motion.div
+      <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-2xl relative z-10"
@@ -176,7 +176,7 @@ export default function RequestLinkView({ requestId, onBackToApp }: RequestLinkP
 
         <AnimatePresence mode="wait">
           {error && (
-            <motion.div
+            <motion.div 
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
@@ -190,7 +190,7 @@ export default function RequestLinkView({ requestId, onBackToApp }: RequestLinkP
           )}
 
           {successMsg && (
-            <motion.div
+            <motion.div 
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
