@@ -1,17 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
-import { collection, getDocs, doc, updateDoc, setDoc, deleteDoc, query, where } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, setDoc, addDoc, deleteDoc } from 'firebase/firestore';
 import { createSpreadsheet, setupCollectionSheet, sendGmailEmail, createGoogleTask } from '../lib/googleApi';
 import { FundsRequest, UserProfile, FinanceRecord, CoastArea, UserRole } from '../types';
 import { 
   ShieldAlert, UserPlus, Check, X, FileCheck, RefreshCw, Send, 
-  MapPin, Coins, ExternalLink, Link2, AlertCircle, CheckCircle2,
-  Plus, Users, Trash2, Edit, Save, Award, Briefcase, LayoutGrid, Search, MoreHorizontal, GripVertical
+  MapPin, Coins, ExternalLink, Link2, AlertCircle, CheckCircle2, ListFilter,
+  CheckCircle, Plus, Users, HeartHandshake, Layers, Trash2, Edit, Save,
+  BookOpen, Briefcase, Award, ShieldCheck
 } from 'lucide-react';
-import { Button } from './ui/Button';
-import { Card, CardHeader, CardTitle, CardDescription } from './ui/Card';
-import { Badge } from './ui/Badge';
-import { Input, Select } from './ui/Input';
+import { motion } from 'motion/react';
 
 interface AdminViewProps {
   onSpreadsheetCreated: (id: string) => void;
@@ -34,7 +32,9 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
   const [signupName, setSignupName] = useState('');
   const [signupRole, setSignupRole] = useState<UserRole>('reseller');
   const [signupArea, setSignupArea] = useState<CoastArea>('Mombasa');
-  const [signupPassword, setSignupPassword] = useState(() => 'MBW-' + Math.floor(1000 + Math.random() * 9000));
+  const [signupPassword, setSignupPassword] = useState(() => {
+    return 'MBW-' + Math.floor(1000 + Math.random() * 9000).toString();
+  });
 
   // Manual payment state
   const [selectedResId, setSelectedResId] = useState('');
@@ -60,10 +60,13 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
 
   const fetchAdminData = async () => {
     setLoading(true);
+    setError(null);
     try {
+      // 1. Fetch support request forms
       const reqSnap = await getDocs(collection(db, 'requests'));
       setRequests(reqSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as FundsRequest[]);
 
+      // 2. Fetch profiles
       const profSnap = await getDocs(collection(db, 'users'));
       const profilesList = profSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() })) as UserProfile[];
       setProfiles(profilesList);
@@ -72,268 +75,530 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
         if (!taskReseller) setTaskReseller(profilesList[0].uid);
       }
 
+      // 3. Fetch financial payout records
       const finSnap = await getDocs(collection(db, 'finances'));
       setFinances(finSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as FinanceRecord[]);
-    } catch (err) {
-      setError('Could not fetch data.');
+
+    } catch (err: any) {
+      console.error(err);
+      setError('Could not fetch administrative profiles.');
     } finally {
       setLoading(false);
     }
   };
 
+  // Start Edit Mode for User Profile
+  const startEditingProfile = (profile: UserProfile) => {
+    setEditingProfileId(profile.uid);
+    setEditDisplayName(profile.displayName);
+    setEditRole(profile.role);
+    setEditArea(profile.area || 'Mombasa');
+  };
+
+  // Save/Update Edited User Profile in Firestore
   const handleUpdateProfile = async (uid: string) => {
+    if (!editDisplayName.trim()) {
+      setError('User display name is required.');
+      return;
+    }
     setLoading(true);
     setError(null);
+    setSuccess(null);
     try {
-      await updateDoc(doc(db, 'users', uid), {
+      const userRef = doc(db, 'users', uid);
+      await updateDoc(userRef, {
         displayName: editDisplayName,
         role: editRole,
         area: editRole === 'reseller' ? editArea : null
       });
-      setSuccess(`Profile updated!`);
+      setSuccess(`User profile for "${editDisplayName}" has been successfully updated.`);
       setEditingProfileId(null);
       await fetchAdminData();
-    } catch (err) {
-      console.error('Update profile error:', err);
-      setError('Update failed.');
+    } catch (err: any) {
+      console.error(err);
+      setError('Failed to update user profile.');
     } finally {
       setLoading(false);
     }
   };
 
+  // Delete User Profile
   const handleDeleteProfile = async (uid: string, name: string) => {
-    if (!window.confirm(`Delete profile of "${name}"?`)) return;
+    const confirmDelete = window.confirm(`Are you absolutely sure you want to revoke system Access & DELETE the profile of "${name}"?`);
+    if (!confirmDelete) return;
+
     setLoading(true);
     setError(null);
+    setSuccess(null);
     try {
       await deleteDoc(doc(db, 'users', uid));
-      setSuccess(`Permanently removed.`);
+      setSuccess(`User profile for "${name}" has been permanently removed.`);
       await fetchAdminData();
-    } catch (err) {
-      console.error('Delete profile error:', err);
-      setError('Delete failed.');
+    } catch (err: any) {
+      console.error(err);
+      setError('Failed to delete user profile.');
     } finally {
       setLoading(false);
     }
   };
 
+  // Direct Tasks & Weekly Objectives Assignment
   const handleAssignTask = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!taskReseller || !taskObjective || !taskDailyBreakdown) {
+      setError('Please provide complete reseller, week template, and task criteria details.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
+    setSuccess(null);
     try {
-      const resellerUser = profiles.find(p => p.uid === taskReseller);
+      const targetUser = profiles.find(p => p.uid === taskReseller);
       const planId = `plan_${taskReseller}_${taskWeekStart}`;
-      await setDoc(doc(db, 'plans', planId), {
+
+      const newPlan = {
         id: planId,
         resellerId: taskReseller,
         weekStartDate: taskWeekStart,
         objective: taskObjective,
         tasks: taskDailyBreakdown
-      });
+      };
 
-      // Restore Google Task sync
-      await createGoogleTask(
-        `Work Plan: ${taskWeekStart}`,
-        `Objective: ${taskObjective}\nTasks: ${taskDailyBreakdown}`
-      ).catch((e) => console.log('Google Task sync offline', e));
+      await setDoc(doc(db, 'plans', planId), newPlan);
 
-      // Restore Email notification
-      if (resellerUser?.email) {
+      // Email Notification to Reseller
+      if (targetUser?.email) {
         await sendGmailEmail(
-          resellerUser.email,
-          "New Work Plan Assigned",
-          `<h3>Hello ${resellerUser.displayName},</h3>
-           <p>A new work plan has been assigned to you for the week starting <strong>${taskWeekStart}</strong>.</p>
-           <p><strong>Objective:</strong> ${taskObjective}</p>
-           <p>Please log in to the portal to view your daily breakdown.</p>`
-        ).catch((e) => console.log('Task email deferred', e));
+          targetUser.email,
+          `Mobiwave ISP: New Weekly Objective & Tasks Allocated`,
+          `<h3>Hello ${targetUser.displayName},</h3>
+           <p>Your Admin Coordinator has allocated a new active weekly objective agenda for the week of ${taskWeekStart}:</p>
+           <blockquote style="padding: 12px; background: #e0f2fe; border-left: 4px solid #0284c7; font-weight: bold; font-style: italic; border-radius: 4px;">
+             "${taskObjective}"
+           </blockquote>
+           <p><strong>Daily Tasks & Performance Guidelines:</strong></p>
+           <pre style="padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; font-family: monospace; font-size: 13px; white-space: pre-wrap; border-radius: 6px;">${taskDailyBreakdown}</pre>
+           <p>Please log matching lead connection submissions inside your reseller board to reach your KPIs!</p>
+           <p>Best regards,<br/>Mobiwave ISP Administration Office</p>`
+        ).catch(() => console.log('Gmail task delivery offline or pending scope'));
       }
 
-      setSuccess(`Task dispatched and synced!`);
+      setSuccess(`Weekly Task Agenda dispatched successfully for ${targetUser?.displayName}!`);
       setTaskObjective('');
       setTaskDailyBreakdown('');
       await fetchAdminData();
-    } catch (err) {
-      console.error('Task assignment error:', err);
-      setError('Task assignment failed.');
+    } catch (err: any) {
+      console.error(err);
+      setError('Failed to assign task agenda.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogManualPayment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const resellerUser = profiles.find(p => p.uid === selectedResId);
-      const finId = 'fin_' + Math.random().toString(36).substring(2, 9);
-      await setDoc(doc(db, 'finances', finId), {
-        id: finId, resellerId: selectedResId, resellerName: resellerUser?.displayName || 'Agent',
-        type: financeType, amount: parseFloat(financeAmount), period: financePeriod, status: 'paid', date: new Date().toISOString()
-      });
-      setSuccess(`Payment saved!`);
-      setFinanceAmount(''); await fetchAdminData();
-    } catch (err) {
-      setError('Payment log failed.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
+  // Setup Google Sheet integration spreadsheet
   const handleSetupSheet = async () => {
+    const confirmSetup = window.confirm("Do you want to automatically create a central Google Sheet to capture real-time leads logs, finance receipts & payouts?");
+    if (!confirmSetup) return;
+
     setLoading(true);
+    setSuccess(null);
+    setError(null);
     try {
-      const sheetId = await createSpreadsheet("Coast Internet Leads Central Ledger");
-      await setupCollectionSheet(sheetId, "Leads Log", ["ID", "Name", "Client", "Location", "Type", "Phone", "Revenue", "Time"]);
+      // Create Sheet via Sheets API
+      const sheetId = await createSpreadsheet("Coast Internet Leads & Support Central Ledger");
+      
+      // Add sheet tables layout headers
+      await setupCollectionSheet(sheetId, "Leads Log", [
+        "Lead ID", "Reseller Name", "Client Establishment", "Geographical Location", "Institution", "Contact Phone", "Paid Setup Revenue (KES)", "Timestamp"
+      ]);
+
+      await setupCollectionSheet(sheetId, "Biweekly Support Logs", [
+        "Request ID", "Recipient Name", "Recipient Email", "Dispensed Amount (KES)", "Purpose Description", "Period Label", "Review status", "Receipt signed"
+      ]);
+
       onSpreadsheetCreated(sheetId);
-      setSuccess(`Ledger Sync Active!`);
-    } catch (err) {
-      setError(`Setup failed.`);
+      setSuccess(`Google Sheets integration activated successfully! Central leads log is now fully synchronized.`);
+    } catch (err: any) {
+      console.error(err);
+      setError(`Google Sheet instantiation failed. Ensure Workspace OAuth permissions are accepted.`);
     } finally {
       setLoading(false);
     }
   };
 
+  // Support Request Approvals/Rejections (Admin Approves link submissions)
   const handleRequestStatus = async (id: string, newStatus: 'approved' | 'rejected') => {
+    const confirmed = window.confirm(`Confirm: Mark biweekly support request ${id} as ${newStatus.toUpperCase()}?`);
+    if (!confirmed) return;
+
     setLoading(true);
+    setError(null);
+    setSuccess(null);
     try {
       const requestRef = doc(db, 'requests', id);
       const targetRequest = requests.find(r => r.id === id);
-      if (!targetRequest) return;
 
-      await updateDoc(requestRef, { status: newStatus, approvedAt: newStatus === 'approved' ? new Date().toISOString() : null });
+      if (!targetRequest) {
+        setError('Request item missing.');
+        return;
+      }
 
+      const patchData = {
+        status: newStatus,
+        approvedAt: newStatus === 'approved' ? new Date().toISOString() : null
+      };
+
+      await updateDoc(requestRef, patchData);
+
+      // Dispatch payout record to финансы on Approval
       if (newStatus === 'approved') {
         const financeId = `fin_req_${id}`;
-        await setDoc(doc(db, 'finances', financeId), {
-          id: financeId, resellerId: targetRequest.recipientEmail, resellerName: targetRequest.recipientName,
-          type: 'biweekly_support', amount: targetRequest.amount, period: targetRequest.biweeklyPeriod, status: 'pending', date: new Date().toISOString()
-        });
+        const newFinance: FinanceRecord = {
+          id: financeId,
+          resellerId: targetRequest.recipientEmail, // Mapping UID or email for guest referrals
+          resellerName: targetRequest.recipientName,
+          type: 'biweekly_support',
+          amount: targetRequest.amount,
+          period: targetRequest.biweeklyPeriod,
+          status: 'pending', // Awaiting signedReceipt signature
+          date: new Date().toISOString()
+        };
+        await setDoc(doc(db, 'finances', financeId), newFinance);
 
-        // Restore Email notification
-        await sendGmailEmail(
-          targetRequest.recipientEmail,
-          "Support Request Approved: Sign Receipt",
-          `<h3>Hello ${targetRequest.recipientName},</h3>
-           <p>Your support request for <strong>KES ${targetRequest.amount.toLocaleString()}</strong> has been approved.</p>
-           <p>Please log in to your portal or use the public link to sign the disbursement receipt.</p>`
-        ).catch(() => {});
+        // Formulate actionable task in Google Tasks for administrative cash allocation
+        await createGoogleTask(
+          `Disburse funds: ${targetRequest.recipientName}`,
+          `Disburse payments support of KES ${targetRequest.amount.toLocaleString()} for request ${id} (${targetRequest.purpose})`
+        ).catch(() => console.log('Tasks sync offline or pending API scope'));
       }
-      setSuccess(`Request ${newStatus}!`);
+
+      // Gmail notification alert sent to recipient containing form link for Sign Receipt confirmation
+      await sendGmailEmail(
+        targetRequest.recipientEmail,
+        `Internet Support Request Status Alert: ${newStatus.toUpperCase()}`,
+        `<h3>Support Allocation Update</h3>
+         <p>Hello ${targetRequest.recipientName},</p>
+         <p>Your biweekly allocation request of <strong>KES ${targetRequest.amount.toLocaleString()}</strong> has been <strong>${newStatus.toUpperCase()}</strong>.</p>
+         <p><strong>Next Action Items:</strong></p>
+         ${newStatus === 'approved' ? `
+         <p>In adherence to transparency guidelines, you are required to sign the Digital Receipt confirming receipt of funds.</p>
+         <p><a href="${window.location.origin}?reqId=${id}" style="display:inline-block;padding:10px 20px;background-color:#10b981;color:#fff;text-decoration:none;border-radius:5px;">Sign Receipt Form now</a></p>
+         ` : `
+         <p>Your regional supervisor will communicate challenges-feedback shortly.</p>
+         `}
+         <p>Best regards,<br/>Admin Oversight Directorate</p>`
+      ).catch(() => console.log('No-send gmail placeholder'));
+
+      setSuccess(`Request ${id} marked as ${newStatus}! Recipient emailed.`);
       await fetchAdminData();
-    } catch (err) {
-      setError('Update failed.');
+    } catch (err: any) {
+      console.error(err);
+      setError('Approvals status transition failed.');
     } finally {
       setLoading(false);
     }
   };
 
+  // Add User Profile registration mapping
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!signupEmail || !signupName) {
+      setError('Fill user credentials.');
+      return;
+    }
+
     setLoading(true);
+    setError(null);
+    setSuccess(null);
     try {
       const pseudoUid = 'user_' + Math.random().toString(36).substring(2, 9);
-      await setDoc(doc(db, 'users', pseudoUid), {
-        uid: pseudoUid, email: signupEmail.toLowerCase().trim(), displayName: signupName,
-        role: signupRole, area: signupRole === 'reseller' ? signupArea : null, password: signupPassword
+      const chosenPass = signupPassword.trim() || ('MBW-' + Math.floor(1000 + Math.random() * 9000).toString());
+      const newProfile: UserProfile = {
+        uid: pseudoUid,
+        email: signupEmail.toLowerCase().trim(),
+        displayName: signupName,
+        role: signupRole,
+        area: signupRole === 'reseller' ? signupArea : null,
+        password: chosenPass
+      };
+
+      await setDoc(doc(db, 'users', pseudoUid), newProfile);
+
+      // Send Workspace Invitation & Identity Verification Email
+      await sendGmailEmail(
+        newProfile.email,
+        `Mobiwave ISP Portal: Authorized Workspace Access Credentials`,
+        `<h3>Welcome to the Mobiwave ISP Lead Procurement Matrix, ${newProfile.displayName}!</h3>
+         <p>Your administrative coordinator has provisioned and authorized your account on our portal:</p>
+         
+         <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-family: sans-serif; font-size: 13px;">
+           <tr style="background-color: #f8fafc;">
+             <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: bold; width: 150px;">Access Role:</td>
+             <td style="padding: 8px 12px; border: 1px solid #e2e8f0; text-transform: capitalize;">${newProfile.role}</td>
+           </tr>
+           ${newProfile.area ? `
+           <tr>
+             <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: bold;">Allocated Sector:</td>
+             <td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${newProfile.area}</td>
+           </tr>
+           ` : ''}
+           <tr style="background-color: #f8fafc;">
+             <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: bold;">Registered Email:</td>
+             <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-family: monospace;">${newProfile.email}</td>
+           </tr>
+           <tr>
+             <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: bold; color: #4f46e5;">Access Passcode:</td>
+             <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-family: monospace; font-weight: bold; color: #4f46e5;">${chosenPass}</td>
+           </tr>
+         </table>
+
+         <h4 style="color: #1e1b4b; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-top: 24px;">🔑 Dynamic Sign-In Methods</h4>
+         
+         <p><strong>Option 1 (Direct SSO Bypass):</strong></p>
+         <p>If you experience any "Google verification / testing block" or generic Google 403 sign-in restrictions, open the portal and select the <strong>"Registered Affiliate Bypasser"</strong> option. Enter your registered email and your unique access passcode:</p>
+         <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #4f46e5; padding: 12px; margin: 12px 0; font-family: monospace; font-size: 14px; border-radius: 4px;">
+           Email: <strong>${newProfile.email}</strong><br/>
+           Access Passcode: <strong>${chosenPass}</strong>
+         </div>
+
+         <p><strong>Option 2 (Google Auth SSO):</strong></p>
+         <p>You may also click the verification button below to authorize using your Google account directly (only if your account has been added to the developer's approved list of testers):</p>
+         <p style="margin: 20px 0;">
+           <a href="${window.location.origin}" style="display: inline-block; padding: 10px 20px; background-color: #4f46e5; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px;">
+             Verify Identity & Enter Portal
+           </a>
+         </p>
+         
+         <p style="color: #64748b; font-size: 11px; line-height: 1.5; border-top: 1px solid #f1f5f9; padding-top: 12px; margin-top: 24px;">
+           <strong>Notice to Field Representatives:</strong> Portal credentials and access keys are sensitive. Safe usage protocols match standard enterprise policies. If you have any inquiries, contact the desk coordinator.
+         </p>
+         <p style="font-size: 13px;">Best regards,<br/>Mobiwave ISP Systems Administration Desk</p>`
+      ).catch((mailErr) => {
+        console.warn('Gmail invitation notification deferred', mailErr);
       });
 
-      // Restore Welcome email
-      await sendGmailEmail(
-        signupEmail,
-        "Welcome to Mobiwave ISP Portal: Your Account Passcode",
-        `<h3>Welcome ${signupName}!</h3>
-         <p>You have been registered as a <strong>${signupRole}</strong> for the <strong>${signupArea}</strong> sector.</p>
-         <p>Use the following details to log in via the Bypass tab:</p>
-         <ul>
-           <li>Email: ${signupEmail}</li>
-           <li>Passcode: <strong>${signupPassword}</strong></li>
-         </ul>
-         <p>Access Portal: ${window.location.origin}</p>`
-      ).catch(() => console.log('Gmail notification send offline or pending configuration'));
-
-      setSuccess(`User Registered!`);
-      setSignupName(''); setSignupEmail(''); setSignupPassword('MBW-' + Math.floor(1000 + Math.random() * 9000));
+      setSuccess(`User registered & access credentials email dispatched for ${signupName} with passcode: ${chosenPass}!`);
+      setSignupName('');
+      setSignupEmail('');
+      // Regenerate randomized passcode for the next registrant
+      setSignupPassword('MBW-' + Math.floor(1000 + Math.random() * 9000).toString());
       await fetchAdminData();
-    } catch (err) {
+    } catch (err: any) {
+      console.error(err);
       setError('Registration failed.');
     } finally {
       setLoading(false);
     }
   };
 
+  // Dispatch payment
+  const handleLogManualPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedResId || !financeAmount) {
+      setError('Provide target reseller and payoff values.');
+      return;
+    }
+
+    const value = parseFloat(financeAmount);
+    if (isNaN(value) || value <= 0) {
+      setError('Provide valid disbursement sum.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const resellerUser = profiles.find(p => p.uid === selectedResId);
+      const finId = 'fin_' + Math.random().toString(36).substring(2, 9);
+      const newFin: FinanceRecord = {
+        id: finId,
+        resellerId: selectedResId,
+        resellerName: resellerUser?.displayName || resellerUser?.email || 'Reseller Agent',
+        type: financeType,
+        amount: value,
+        period: financePeriod,
+        status: 'paid',
+        date: new Date().toISOString()
+      };
+
+      await setDoc(doc(db, 'finances', finId), newFin);
+
+      // Notify reseller of commission/support settlement
+      if (resellerUser?.email) {
+        await sendGmailEmail(
+          resellerUser.email,
+          "Financial Support Disbursed Confirmation",
+          `<h3>Financial Receipt Alert</h3>
+           <p>The payroll desk has finalized payouts to your account:</p>
+           <ul>
+             <li><strong>Payment Type:</strong> ${financeType === 'biweekly_support' ? 'Biweekly Operational Support' : 'Monthly Performance Commission'}</li>
+             <li><strong>Value Disbursed:</strong> KES ${value.toLocaleString()}</li>
+             <li><strong>Payout Period:</strong> ${financePeriod}</li>
+           </ul>
+           <p>Keep logging connection achievements to earn commissions!</p>`
+        ).catch(() => console.log('Mail outlines offline'));
+      }
+
+      setSuccess(`Financial log saved as PAID for ${resellerUser?.displayName}!`);
+      setFinanceAmount('');
+      await fetchAdminData();
+    } catch (err: any) {
+      console.error(err);
+      setError('Payment logs configuration crash.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="space-y-8">
-      {/* Notifications */}
-      {error && <div className="p-4 one-glass border-one-red/20 bg-one-red/5 text-one-red rounded-2xl text-xs font-bold flex items-center gap-3 animate-one-fade-in"><AlertCircle size={18}/>{error}</div>}
-      {success && <div className="p-4 one-glass border-one-green/20 bg-one-green/5 text-one-green rounded-2xl text-xs font-bold flex items-center gap-3 animate-one-fade-in"><CheckCircle2 size={18}/>{success}</div>}
-
-      {/* Ledger Card */}
-      <Card className="flex flex-col md:flex-row items-center justify-between gap-6 overflow-hidden relative group">
-        <div className="absolute right-0 top-0 w-64 h-64 bg-one-blue/5 rounded-full blur-[80px] -translate-y-32 translate-x-32 group-hover:bg-one-blue/10 transition-colors" />
-        <div className="flex items-center gap-6 relative z-10">
-          <div className="w-16 h-16 rounded-[24px] bg-one-blue text-white flex items-center justify-center shadow-xl shadow-one-blue/20">
-            <Link2 size={32}/>
-          </div>
+    <div className="space-y-6">
+      
+      {/* Central Google Sheets Ledger Integration Banner */}
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm overflow-hidden relative">
+        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-44 h-44 bg-indigo-50/50 rounded-full blur-2xl pointer-events-none" />
+        
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
           <div>
-            <CardTitle className="text-lg">Master Ledger Sync</CardTitle>
-            <CardDescription className="max-w-md text-sm">Connect real-time lead logs, finance receipts, and payroll payouts to a central Google Sheet.</CardDescription>
+            <div className="flex items-center gap-2">
+              <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                <Link2 className="w-5 h-5" />
+              </span>
+              <h3 className="text-sm font-bold text-slate-900 tracking-tight">Google Sheets Master Ledger Sync</h3>
+            </div>
+            <p className="text-xs text-slate-500 mt-2 max-w-2xl leading-relaxed">
+              Connect the central high-performance ledger. This maps every connection lead row, biweekly support request, and commission receipt directly to an active Google Sheet in real-time.
+            </p>
+          </div>
+
+          <div className="shrink-0">
+            {savedSpreadsheetId ? (
+              <div className="flex items-center gap-2.5">
+                <span className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-100 font-extrabold px-3 py-2 rounded-xl flex items-center gap-1.5 uppercase tracking-wider font-mono">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  Synced
+                </span>
+                <a 
+                  href={`https://docs.google.com/spreadsheets/d/${savedSpreadsheetId}/edit`} 
+                  target="_blank" 
+                  rel="noreferrer"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 focus:ring-2 focus:ring-indigo-500/25"
+                >
+                  Configure Sheet <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            ) : (
+              <button
+                onClick={handleSetupSheet}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4.5 py-2.5 rounded-xl text-xs font-bold shadow-sm transition-all focus:ring-2 focus:ring-indigo-500/25 active:scale-95 flex items-center gap-2 cursor-pointer"
+              >
+                <RefreshCw className="w-4 h-4 animate-spin-slow" /> Bootstrap Google Ledger Sheet
+              </button>
+            )}
           </div>
         </div>
-        <div className="relative z-10">
-          {savedSpreadsheetId ? (
-            <div className="flex items-center gap-3">
-              <Badge variant="green" className="py-2 px-4">Synced</Badge>
-              <Button onClick={() => window.open(`https://docs.google.com/spreadsheets/d/${savedSpreadsheetId}/edit`, '_blank')}>View Sheet <ExternalLink size={14} className="ml-2"/></Button>
-            </div>
-          ) : (
-            <Button onClick={handleSetupSheet} disabled={loading} className="h-14 px-8">Bootstrap Ledger</Button>
-          )}
-        </div>
-      </Card>
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Support Queue */}
-        <Card className="lg:col-span-7 p-0">
-          <CardHeader className="p-8 border-b border-slate-50">
+      {/* Dynamic Status Notifications */}
+      {error && (
+        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs flex items-center gap-3 animate-fadeIn">
+          <AlertCircle className="w-5 h-5 text-rose-500 flex-shrink-0" />
+          <span className="font-semibold">{error}</span>
+        </div>
+      )}
+
+      {success && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl text-xs flex items-center gap-3 animate-fadeIn">
+          <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+          <span className="font-extrabold">{success}</span>
+        </div>
+      )}
+
+      {/* Pending Support Forms Approval list */}
+      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+        <div className="flex justify-between items-center border-b border-slate-100 pb-3.5 mb-4">
+          <div className="flex items-center gap-2">
+            <span className="p-2 bg-emerald-50 text-emerald-700 rounded-xl">
+              <FileCheck className="w-4.5 h-4.5" />
+            </span>
             <div>
-              <CardTitle>Auth Queue</CardTitle>
-              <CardDescription>Public referral form entries pending review</CardDescription>
+              <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">Support Requests Auth Queue</h3>
+              <p className="text-[10px] text-slate-400">Evaluate public refer form entries and approve biweekly disbursements</p>
             </div>
-            <Badge variant="purple">{requests.length} Entries</Badge>
-          </CardHeader>
+          </div>
+          <span className="text-[10px] bg-slate-100 border border-slate-200 text-slate-500 font-bold px-2.5 py-1 rounded-xl">
+            {requests.length} entries total
+          </span>
+        </div>
+
+        {requests.length === 0 ? (
+          <div className="text-center py-12 text-slate-400 text-xs font-medium">
+            No support requests compiled at this time. Send recipient referral form links to log details.
+          </div>
+        ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  <th className="px-8 py-4">Recipient</th>
-                  <th className="px-4 py-4 text-center">Amount</th>
-                  <th className="px-4 py-4">Status</th>
-                  <th className="px-8 py-4 text-right">Action</th>
+            <table className="w-full text-left text-xs font-medium">
+              <thead className="text-slate-400 border-b border-slate-100 uppercase text-[10px] tracking-wider">
+                <tr>
+                  <th className="pb-3 text-slate-500">Form ID</th>
+                  <th className="pb-3 text-slate-500">Recipient</th>
+                  <th className="pb-3 text-slate-500">Requested Amount</th>
+                  <th className="pb-3 text-slate-500">Period</th>
+                  <th className="pb-3 text-slate-500">Mission Statement</th>
+                  <th className="pb-3 text-slate-500">Receipt Sign</th>
+                  <th className="pb-3 text-slate-500 text-right">Authorize</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
-                {requests.map(r => (
-                  <tr key={r.id} className="hover:bg-slate-50/30 group">
-                    <td className="px-8 py-5">
-                      <p className="text-sm font-bold text-slate-900">{r.recipientName}</p>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">{r.recipientEmail}</p>
+              <tbody className="text-slate-600 divide-y divide-slate-50 text-[11px] font-semibold">
+                {requests.map((r) => (
+                  <tr key={r.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="py-3.5 font-mono text-slate-400 font-bold">{r.id.substring(0, 8)}</td>
+                    <td className="py-3.5">
+                      <p className="font-bold text-slate-800">{r.recipientName}</p>
+                      <p className="text-[9px] text-slate-400 font-mono font-bold mt-0.5">{r.recipientEmail}</p>
                     </td>
-                    <td className="px-4 py-5 text-center font-mono font-bold text-xs">KES {r.amount.toLocaleString()}</td>
-                    <td className="px-4 py-5">
-                      <Badge variant={r.status === 'approved' ? 'green' : r.status === 'pending' ? 'orange' : 'red'}>{r.status}</Badge>
+                    <td className="py-3.5 font-extrabold text-slate-900 font-mono">KES {r.amount.toLocaleString()}</td>
+                    <td className="py-3.5 font-mono text-[10px] text-slate-500">{r.biweeklyPeriod}</td>
+                    <td className="py-3.5 text-slate-500 max-w-[140px] truncate italic" title={r.purpose}>
+                      "{r.purpose}"
                     </td>
-                    <td className="px-8 py-5 text-right flex justify-end gap-2">
+                    <td className="py-3.5">
+                      <span className={`px-2 py-0.5 rounded-lg text-[9px] font-extrabold uppercase tracking-wide border ${
+                        r.signedReceipt 
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-150' 
+                          : r.status === 'approved' 
+                            ? 'bg-amber-50 text-amber-700 border-amber-150 animate-pulse' 
+                            : 'bg-slate-50 text-slate-400 border-slate-150'
+                      }`}>
+                        {r.signedReceipt ? 'Signed ✓' : r.status === 'approved' ? 'Awaiting sign' : 'Not setup'}
+                      </span>
+                    </td>
+                    <td className="py-3.5 text-right">
                       {r.status === 'pending' ? (
-                        <>
-                          <Button size="sm" variant="success" onClick={() => handleRequestStatus(r.id, 'approved')}><Check size={14}/></Button>
-                          <Button size="sm" variant="danger" onClick={() => handleRequestStatus(r.id, 'rejected')}><X size={14}/></Button>
-                        </>
-                      ) : (
-                        <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
-                          {r.signedReceipt ? <Badge variant="green">Signed ✓</Badge> : <Badge>Processed</Badge>}
+                        <div className="flex gap-2 justify-end">
+                          <button
+                            onClick={() => handleRequestStatus(r.id, 'rejected')}
+                            className="p-1.5 text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-lg cursor-pointer transition-colors"
+                            title="Reject Funding Request"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleRequestStatus(r.id, 'approved')}
+                            className="p-1 px-2 text-emerald-700 hover:bg-emerald-50 border border-emerald-200 text-[10px] font-extrabold rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                            title="Approve & Dispatch Notification"
+                          >
+                            <Check className="w-3.5 h-3.5" /> Approve
+                          </button>
                         </div>
+                      ) : (
+                        <span className={`text-[10px] font-bold flex items-center justify-end gap-1 ${
+                          r.status === 'approved' ? 'text-emerald-600' : 'text-rose-500'
+                        }`}>
+                          {r.status === 'approved' ? 'Approved ✓' : 'Rejected ✕'}
+                        </span>
                       )}
                     </td>
                   </tr>
@@ -341,167 +606,427 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
               </tbody>
             </table>
           </div>
-        </Card>
+        )}
+      </section>
 
-        {/* User Provisioning */}
-        <Card className="lg:col-span-5">
-          <CardHeader>
-            <CardTitle>Provision User</CardTitle>
-            <div className="p-2 bg-one-indigo/10 text-one-indigo rounded-xl"><UserPlus size={20}/></div>
-          </CardHeader>
-          <form onSubmit={handleAddUser} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <Input label="Full Name" value={signupName} onChange={(e) => setSignupName(e.target.value)} required placeholder="Salim Mwangi" />
-              <Input label="Email" type="email" value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} required placeholder="name@gmail.com" />
+      {/* USER ACCOUNTS MANAGEMENT BOARD / ACTIVE AFFILIATES DIRECTORY */}
+      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+        <div className="flex justify-between items-center border-b border-slate-100 pb-3.5 mb-4">
+          <div className="flex items-center gap-2">
+            <span className="p-2 bg-indigo-50 text-indigo-700 rounded-xl">
+              <Users className="w-4.5 h-4.5" />
+            </span>
+            <div>
+              <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">Active Workspace Registry & Permissions</h3>
+              <p className="text-[10px] text-slate-400">Manage real-time user workspace authorizations, edit role credentials, and assign coast sectors</p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Select label="Role" value={signupRole} onChange={(e) => setSignupRole(e.target.value as any)}>
-                <option value="reseller">Field Agent</option>
-                <option value="management">Oversight</option>
-                <option value="admin">System Admin</option>
-              </Select>
+          </div>
+          <span className="text-[10px] bg-indigo-50 border border-indigo-150 text-indigo-700 font-bold px-2.5 py-1 rounded-xl">
+            {profiles.length} Verified Accounts
+          </span>
+        </div>
+
+        {profiles.length === 0 ? (
+          <div className="text-center py-8 text-slate-400 text-xs font-medium">
+            No registered users found in directory database.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs font-medium">
+              <thead className="text-slate-400 border-b border-slate-100 uppercase text-[10px] tracking-wider">
+                <tr>
+                  <th className="pb-3 text-slate-500">Full Name</th>
+                  <th className="pb-3 text-slate-500">Google Email</th>
+                  <th className="pb-3 text-slate-500">Workspace Access Role</th>
+                  <th className="pb-3 text-slate-500">Allocated Division Sector</th>
+                  <th className="pb-3 text-slate-500">Bypass Passcode</th>
+                  <th className="pb-3 text-slate-500 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="text-slate-600 divide-y divide-slate-50 text-[11px] font-semibold">
+                {profiles.map((p) => {
+                  const isEditing = editingProfileId === p.uid;
+                  return (
+                    <tr key={p.uid} className={`hover:bg-slate-50/50 transition-colors ${isEditing ? 'bg-indigo-50/25' : ''}`}>
+                      <td className="py-3.5">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={editDisplayName}
+                            onChange={(e) => setEditDisplayName(e.target.value)}
+                            className="px-2 py-1 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-1 focus:ring-indigo-500 bg-white text-slate-800"
+                          />
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                            <p className="font-bold text-slate-800">{p.displayName}</p>
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3.5 font-mono text-slate-500">{p.email}</td>
+                      <td className="py-3.5">
+                        {isEditing ? (
+                          <select
+                            value={editRole}
+                            onChange={(e) => setEditRole(e.target.value as UserRole)}
+                            className="px-2 py-1 border border-slate-200 rounded-lg text-xs font-semibold bg-white outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800"
+                          >
+                            <option value="reseller">Reseller (Field Agent)</option>
+                            <option value="management">Management Supervisor</option>
+                            <option value="admin">System Administrator</option>
+                          </select>
+                        ) : (
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide border ${
+                            p.role === 'admin' 
+                              ? 'bg-rose-50 text-rose-700 border-rose-100' 
+                              : p.role === 'management' 
+                                ? 'bg-amber-50 text-amber-700 border-amber-100' 
+                                : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                          }`}>
+                            {p.role}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3.5">
+                        {isEditing ? (
+                          editRole === 'reseller' ? (
+                            <select
+                              value={editArea}
+                              onChange={(e) => setEditArea(e.target.value as CoastArea)}
+                              className="px-2 py-1 border border-slate-200 rounded-lg text-xs font-semibold bg-white outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800"
+                            >
+                              <option value="Mombasa">Mombasa</option>
+                              <option value="Malindi">Malindi</option>
+                              <option value="Kilifi">Kilifi</option>
+                              <option value="Kwale">Kwale</option>
+                              <option value="Lamu">Lamu</option>
+                              <option value="Tana River">Tana River</option>
+                            </select>
+                          ) : (
+                            <span className="text-slate-400 font-normal italic">All Sectors</span>
+                          )
+                        ) : (
+                          <span className="font-semibold text-slate-700 font-mono">
+                            {p.role === 'reseller' ? (p.area || 'Mombasa') : 'Global'}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3.5 font-mono text-indigo-650 font-extrabold text-xs">
+                        {p.password || '—'}
+                      </td>
+                      <td className="py-3.5 text-right">
+                        <div className="flex gap-2 justify-end items-center">
+                          {isEditing ? (
+                            <>
+                              <button
+                                onClick={() => setEditingProfileId(null)}
+                                className="p-1 text-slate-500 hover:bg-slate-100 border border-slate-200 rounded-lg cursor-pointer transition-colors"
+                                title="Cancel"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleUpdateProfile(p.uid)}
+                                className="p-1 text-emerald-700 hover:bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                                title="Save Profile Settings"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => startEditingProfile(p)}
+                                className="p-1.5 text-indigo-600 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 rounded-lg cursor-pointer transition-colors"
+                                title="Edit User Identity & Roles"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteProfile(p.uid, p.displayName)}
+                                className="p-1.5 text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-lg cursor-pointer transition-colors"
+                                title="Revoke access & Delete Account"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* MULTI-COLUMN COMPACT BENTO COMPONENT FOR USER ROLES & FINANCIAL DISBURSMENTS */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        {/* User Account Registry Form card */}
+        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">
+            <span className="p-2 bg-indigo-50 text-indigo-700 rounded-xl">
+              <Users className="w-4 h-4" />
+            </span>
+            <div>
+              <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">Affiliate User Provisioning</h3>
+              <p className="text-[10px] text-slate-400">Map new field agents or administrative directors</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleAddUser} className="space-y-3.5 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block font-semibold text-slate-500 mb-1">Account Full Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Salim Mwangi"
+                  value={signupName}
+                  onChange={(e) => setSignupName(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none font-semibold text-slate-700"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-500 mb-1">Account Google Email</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="name@gmail.com"
+                  value={signupEmail}
+                  onChange={(e) => setSignupEmail(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none font-mono font-semibold text-slate-700"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block font-semibold text-slate-500 mb-1">System Access Role</label>
+                <select
+                  required
+                  value={signupRole}
+                  onChange={(e) => setSignupRole(e.target.value as UserRole)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none bg-white font-semibold text-slate-700"
+                >
+                  <option value="reseller">Reseller (Field Agent)</option>
+                  <option value="management">Management Supervisor</option>
+                  <option value="admin">System Administrator</option>
+                </select>
+              </div>
+
               {signupRole === 'reseller' && (
-                <Select label="Sector" value={signupArea} onChange={(e) => setSignupArea(e.target.value as any)}>
-                  <option>Mombasa</option><option>Malindi</option><option>Kilifi</option><option>Kwale</option>
-                </Select>
+                <div>
+                  <label className="block font-semibold text-slate-500 mb-1">Allocated Sector</label>
+                  <select
+                    required
+                    value={signupArea}
+                    onChange={(e) => setSignupArea(e.target.value as CoastArea)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none bg-white font-semibold text-slate-700"
+                  >
+                    <option value="Mombasa">Mombasa</option>
+                    <option value="Malindi">Malindi</option>
+                    <option value="Kilifi">Kilifi</option>
+                    <option value="Kwale">Kwale</option>
+                    <option value="Lamu">Lamu</option>
+                    <option value="Tana River">Tana River</option>
+                  </select>
+                </div>
               )}
             </div>
-            <div className="flex gap-2">
-               <Input label="Passcode" value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} required className="font-mono text-one-indigo bg-one-indigo/5" />
-               <Button type="button" variant="ghost" onClick={()=>setSignupPassword('MBW-'+Math.floor(1000+Math.random()*9000))} className="mt-5">Regen</Button>
-            </div>
-            <Button type="submit" variant="secondary" className="w-full h-12">Provision Profile</Button>
-          </form>
-        </Card>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Payroll */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Payroll Ledger</CardTitle>
-            <div className="p-2 bg-one-green/10 text-one-green rounded-xl"><Coins size={20}/></div>
-          </CardHeader>
-          <form onSubmit={handleLogManualPayment} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <Select label="Beneficiary" value={selectedResId} onChange={(e) => setSelectedResId(e.target.value)}>
-                {profiles.map(p => <option key={p.uid} value={p.uid}>{p.displayName}</option>)}
-              </Select>
-              <Select label="Type" value={financeType} onChange={(e) => setFinanceType(e.target.value as any)}>
-                <option value="biweekly_support">Support</option>
-                <option value="monthly_commission">Commission</option>
-              </Select>
+            <div>
+              <label className="block font-semibold text-slate-500 mb-1">Dedicated Bypass Passcode (Google Auth Override)</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. MBW-4821"
+                  value={signupPassword}
+                  onChange={(e) => setSignupPassword(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none font-mono font-bold text-indigo-600 bg-indigo-50/20"
+                />
+                <button
+                  type="button"
+                  onClick={() => setSignupPassword('MBW-' + Math.floor(1000 + Math.random() * 9000).toString())}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-750 rounded-xl font-bold text-[10px] whitespace-nowrap transition-colors"
+                >
+                  Regen
+                </button>
+              </div>
+              <p className="text-[9px] text-slate-400 mt-1">This passcode acts as an immediate override to bypass Google's OAuth consent screen blocks.</p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Input label="Amount" type="number" value={financeAmount} onChange={(e) => setFinanceAmount(e.target.value)} placeholder="15000" />
-              <Input label="Period" value={financePeriod} onChange={(e) => setFinancePeriod(e.target.value)} />
-            </div>
-            <Button type="submit" variant="success" className="w-full">Dispatch Allocation</Button>
-          </form>
-        </Card>
 
-        {/* Tasking */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Direct Tasking</CardTitle>
-            <div className="p-2 bg-one-orange/10 text-one-orange rounded-xl"><Briefcase size={20}/></div>
-          </CardHeader>
-          <form onSubmit={handleAssignTask} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <Select label="Agent" value={taskReseller} onChange={(e) => setTaskReseller(e.target.value)}>
-                {profiles.map(p => <option key={p.uid} value={p.uid}>{p.displayName}</option>)}
-              </Select>
-              <Input label="Start Date" type="date" value={taskWeekStart} onChange={(e) => setTaskWeekStart(e.target.value)} />
-            </div>
-            <Input label="Objective" value={taskObjective} onChange={(e) => setTaskObjective(e.target.value)} placeholder="Expand Kilifi units..." />
-            <textarea
-              className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-800 h-20 outline-none focus:ring-2 focus:ring-one-blue/20"
-              placeholder="Daily directives..."
-              value={taskDailyBreakdown}
-              onChange={(e) => setTaskDailyBreakdown(e.target.value)}
-            />
-            <Button type="submit" variant="primary" className="w-full">Allocate Program</Button>
+            <button
+              type="submit"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-xl transition-all shadow-sm active:scale-95 text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer mt-2 focus:ring-2 focus:ring-indigo-500/25"
+            >
+              <Plus className="w-3.5 h-3.5" /> Provision Profile User
+            </button>
           </form>
-        </Card>
-      </div>
-
-      {/* Directory Table */}
-      <Card className="p-0 overflow-hidden">
-        <CardHeader className="p-8 border-b border-slate-50">
-          <div>
-            <CardTitle>Workspace Registry</CardTitle>
-            <CardDescription>Authorized regional accounts database</CardDescription>
-          </div>
-          <div className="flex gap-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-              <input className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-one-blue/20" placeholder="Search directory..." />
-            </div>
-          </div>
-        </CardHeader>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                <th className="px-8 py-4">Name</th>
-                <th className="px-4 py-4">Role</th>
-                <th className="px-4 py-4">Sector</th>
-                <th className="px-4 py-4">Passcode</th>
-                <th className="px-8 py-4 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {profiles.map(p => {
-                const isEditing = editingProfileId === p.uid;
-                return (
-                  <tr key={p.uid} className={`hover:bg-slate-50/30 transition-colors ${isEditing ? 'bg-one-blue/5' : ''}`}>
-                    <td className="px-8 py-5">
-                      {isEditing ? (
-                        <input className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-sm font-bold" value={editDisplayName} onChange={(e)=>setEditDisplayName(e.target.value)} />
-                      ) : (
-                        <div>
-                          <p className="text-sm font-bold text-slate-900">{p.displayName}</p>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">{p.email}</p>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-5">
-                      {isEditing ? (
-                        <select className="text-xs font-bold border rounded p-1" value={editRole} onChange={(e)=>setEditRole(e.target.value as any)}>
-                          <option value="reseller">Agent</option><option value="management">Oversight</option><option value="admin">Admin</option>
-                        </select>
-                      ) : (
-                        <Badge variant={p.role === 'admin' ? 'red' : p.role === 'management' ? 'orange' : 'green'}>{p.role}</Badge>
-                      )}
-                    </td>
-                    <td className="px-4 py-5 font-bold text-[11px] text-slate-700">
-                       {isEditing && editRole === 'reseller' ? (
-                         <select className="text-xs font-bold border rounded p-1" value={editArea} onChange={(e)=>setEditArea(e.target.value as any)}>
-                           <option>Mombasa</option><option>Malindi</option><option>Kilifi</option><option>Kwale</option>
-                         </select>
-                       ) : (p.area || 'Global')}
-                    </td>
-                    <td className="px-4 py-5 font-mono text-one-indigo font-black text-xs">{p.password || '—'}</td>
-                    <td className="px-8 py-5 text-right flex justify-end gap-2">
-                      {isEditing ? (
-                        <>
-                          <Button size="sm" variant="success" onClick={()=>handleUpdateProfile(p.uid)}><Check size={14}/></Button>
-                          <Button size="sm" variant="ghost" onClick={()=>setEditingProfileId(null)}><X size={14}/></Button>
-                        </>
-                      ) : (
-                        <>
-                          <button onClick={()=>{setEditingProfileId(p.uid); setEditDisplayName(p.displayName); setEditRole(p.role); setEditArea(p.area||'Mombasa');}} className="p-2 text-slate-300 hover:text-one-blue transition-colors"><Edit size={16}/></button>
-                          <button onClick={()=>handleDeleteProfile(p.uid, p.displayName)} className="p-2 text-slate-300 hover:text-one-red transition-colors"><Trash2 size={16}/></button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
         </div>
-      </Card>
+
+        {/* Manual finance payout logger card */}
+        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">
+            <span className="p-2 bg-indigo-50 text-indigo-700 rounded-xl">
+              <Coins className="w-4 h-4" />
+            </span>
+            <div>
+              <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">Payroll & Disbursements Ledger</h3>
+              <p className="text-[10px] text-slate-400">Log biweekly support allocations or commissions payments</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleLogManualPayment} className="space-y-3.5 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block font-semibold text-slate-500 mb-1">Reseller Beneficiary</label>
+                <select
+                  required
+                  value={selectedResId}
+                  onChange={(e) => setSelectedResId(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none bg-white font-semibold text-slate-700"
+                >
+                  {profiles.length === 0 ? (
+                    <option value="">No Active Users found</option>
+                  ) : (
+                    profiles.map(p => (
+                      <option key={p.uid} value={p.uid}>{p.displayName} ({p.role})</option>
+                    ))
+                  )}
+                </select>
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-500 mb-1">Payment Class Type</label>
+                <select
+                  required
+                  value={financeType}
+                  onChange={(e) => setFinanceType(e.target.value as any)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none bg-white font-semibold text-slate-700"
+                >
+                  <option value="biweekly_support">Biweekly Operational Support</option>
+                  <option value="monthly_commission">Monthly Lead Commission</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block font-semibold text-slate-500 mb-1">Disbursed Sum (KES)</label>
+                <input
+                  type="number"
+                  required
+                  placeholder="e.g. 15000"
+                  value={financeAmount}
+                  onChange={(e) => setFinanceAmount(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none font-semibold text-slate-700"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-500 mb-1">Period Label</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. 2026 June Biweekly 1"
+                  value={financePeriod}
+                  onChange={(e) => setFinancePeriod(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none font-mono font-semibold text-slate-700"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-xl transition-all shadow-sm active:scale-95 text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer mt-2"
+            >
+              <Send className="w-3.5 h-3.5" /> Dispatch Payment Allocation
+            </button>
+          </form>
+        </div>
+
+        {/* Direct Tasks & Weekly Objectives Assignment card */}
+        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between col-span-1 lg:col-span-2">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">
+            <span className="p-2 bg-indigo-50 text-indigo-700 rounded-xl">
+              <Briefcase className="w-4 h-4" />
+            </span>
+            <div>
+              <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">Direct Weekly Performance Tasking & Plans</h3>
+              <p className="text-[10px] text-slate-400">Allocate daily instructions, assign key work programs to field agents, with real-time email triggers</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleAssignTask} className="space-y-4 text-xs">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block font-semibold text-slate-500 mb-1">Target Reseller Recipient</label>
+                <select
+                  required
+                  value={taskReseller}
+                  onChange={(e) => setTaskReseller(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none bg-white font-semibold text-slate-700"
+                >
+                  {profiles.length === 0 ? (
+                    <option value="">No Active Users found</option>
+                  ) : (
+                    profiles.map(p => (
+                      <option key={p.uid} value={p.uid}>{p.displayName} ({p.role})</option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-500 mb-1">Active Target Week Starting</label>
+                <input
+                  type="date"
+                  required
+                  value={taskWeekStart}
+                  onChange={(e) => setTaskWeekStart(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none font-mono font-semibold text-slate-700"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-500 mb-1">Weekly Metric Objective Summary</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Expand fiber sales in Kilifi by 10 units"
+                  value={taskObjective}
+                  onChange={(e) => setTaskObjective(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none font-semibold text-slate-700"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-500 mb-1">Daily Task Breakdown / Actionable Directives</label>
+              <textarea
+                required
+                rows={3}
+                placeholder="Monday: Lead outreach in northern sector&#10;Tuesday: Meetings with institution representatives&#10;Wednesday: Setup agreements and deposit compliance logs"
+                value={taskDailyBreakdown}
+                onChange={(e) => setTaskDailyBreakdown(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none font-semibold text-slate-700 min-h-[80px]"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-xl transition-all shadow-sm active:scale-95 text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer focus:ring-2 focus:ring-indigo-500/25"
+            >
+              <Award className="w-4 h-4 text-sky-200" /> Allocate Task Program & Email Notify
+            </button>
+          </form>
+        </div>
+
+      </div>
+
     </div>
   );
 }
