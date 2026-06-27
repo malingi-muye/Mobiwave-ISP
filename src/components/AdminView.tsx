@@ -484,7 +484,7 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
                   href={`https://docs.google.com/spreadsheets/d/${savedSpreadsheetId}/edit`} 
                   target="_blank" 
                   rel="noreferrer"
-                  className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 focus:ring-2 focus:ring-indigo-500/25"
                 >
                   Configure Sheet <ExternalLink className="w-3.5 h-3.5" />
                 </a>
@@ -862,7 +862,7 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
 
             <button
               type="submit"
-              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded-xl transition-all shadow-sm active:scale-95 text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer mt-2"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-xl transition-all shadow-sm active:scale-95 text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer mt-2 focus:ring-2 focus:ring-indigo-500/25"
             >
               <Plus className="w-3.5 h-3.5" /> Provision Profile User
             </button>
@@ -1018,9 +1018,9 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
 
             <button
               type="submit"
-              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-4 rounded-xl transition-all shadow-sm active:scale-95 text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-xl transition-all shadow-sm active:scale-95 text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer focus:ring-2 focus:ring-indigo-500/25"
             >
-              <Award className="w-4 h-4 text-teal-400" /> Allocate Task Program & Email Notify
+              <Award className="w-4 h-4 text-sky-200" /> Allocate Task Program & Email Notify
             </button>
           </form>
         </div>

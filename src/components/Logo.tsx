@@ -25,38 +25,38 @@ export function Logo({ className = '', size = 36 }: LogoProps) {
       className={`shrink-0 select-none ${className}`}
     >
       <defs>
-        {/* Gradients matching the design */}
+        {/* Gradients matching the One Design System layout */}
         <linearGradient id={bgGradId} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#081e26" />
-          <stop offset="100%" stopColor="#0a252e" />
+          <stop offset="0%" stopColor="#4f46e5" />
+          <stop offset="100%" stopColor="#0ea5e9" />
         </linearGradient>
 
         <linearGradient id={deepWaveId} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#004e64" />
-          <stop offset="50%" stopColor="#006080" />
-          <stop offset="100%" stopColor="#004e64" />
+          <stop offset="0%" stopColor="#312e81" />
+          <stop offset="50%" stopColor="#4338ca" />
+          <stop offset="100%" stopColor="#312e81" />
         </linearGradient>
 
         <linearGradient id={midWaveId} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#00aa9f" />
-          <stop offset="50%" stopColor="#00c4b6" />
-          <stop offset="100%" stopColor="#00aa9f" />
+          <stop offset="0%" stopColor="#0284c7" />
+          <stop offset="50%" stopColor="#0ea5e9" />
+          <stop offset="100%" stopColor="#0284c7" />
         </linearGradient>
 
         <linearGradient id={frontWaveId} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#00f5d4" />
-          <stop offset="50%" stopColor="#2ec4b6" />
-          <stop offset="100%" stopColor="#00f5d4" />
+          <stop offset="0%" stopColor="#38bdf8" />
+          <stop offset="50%" stopColor="#bae6fd" />
+          <stop offset="100%" stopColor="#38bdf8" />
         </linearGradient>
 
         <linearGradient id={accentSignalId} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#00f5d4" />
-          <stop offset="100%" stopColor="#0284c7" />
+          <stop offset="0%" stopColor="#4f46e5" />
+          <stop offset="100%" stopColor="#0ea5e9" />
         </linearGradient>
       </defs>
 
-      {/* Main Dark circular base */}
-      <circle cx="60" cy="62" r="50" fill={`url(#${bgGradId})`} stroke="#132c33" strokeWidth="2.5" />
+      {/* Main Indigo circular base */}
+      <circle cx="60" cy="62" r="50" fill={`url(#${bgGradId})`} stroke="#e2e8f0" strokeWidth="2.5" />
 
       {/* Concentric Signal Arcs (top-half rings) */}
       <path
@@ -128,11 +128,11 @@ export function Logo({ className = '', size = 36 }: LogoProps) {
       />
 
       {/* Trademark MW emblem on lower right edge */}
-      <circle cx="100" cy="100" r="7.5" fill="#081e26" stroke="#132c33" strokeWidth="1.5" />
+      <circle cx="100" cy="100" r="7.5" fill="#4f46e5" stroke="#ffffff" strokeWidth="1.5" />
       <text
         x="100"
-        y="102"
-        fill="#00f5d4"
+        y="102.5"
+        fill="#ffffff"
         fontSize="6.5"
         fontWeight="bold"
         textAnchor="middle"

@@ -507,7 +507,7 @@ export default function ManagementView({ currentUser }: ManagementViewProps) {
                   <label className="block text-slate-500 font-semibold mb-1">Select Reseller Affiliate</label>
                   <select
                     required
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none bg-white font-medium text-slate-700"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none bg-white font-medium text-slate-750 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
                     value={targetReseller}
                     onChange={(e) => setTargetReseller(e.target.value)}
                   >
@@ -521,7 +521,7 @@ export default function ManagementView({ currentUser }: ManagementViewProps) {
                   <label className="block text-slate-500 font-semibold mb-1">KPI Performance Metric</label>
                   <select
                     required
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none bg-white font-medium text-slate-700"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none bg-white font-medium text-slate-750 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
                     value={selectedKpiName}
                     onChange={(e) => setSelectedKpiName(e.target.value)}
                   >
@@ -536,7 +536,7 @@ export default function ManagementView({ currentUser }: ManagementViewProps) {
                     type="number"
                     required
                     placeholder="e.g. 15 leads or 50000 KES"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none font-semibold text-slate-800"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none font-semibold text-slate-805 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
                     value={targetVal}
                     onChange={(e) => setTargetVal(e.target.value)}
                   />
@@ -546,7 +546,7 @@ export default function ManagementView({ currentUser }: ManagementViewProps) {
                   <label className="block text-slate-500 font-semibold mb-1">Audit Performance Period</label>
                   <select
                     required
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none bg-white font-semibold text-slate-700"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none bg-white font-semibold text-slate-750 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
                     value={targetPeriod}
                     onChange={(e) => setTargetPeriod(e.target.value)}
                   >
@@ -559,7 +559,7 @@ export default function ManagementView({ currentUser }: ManagementViewProps) {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded-lg transition-all active:scale-95 text-xs flex items-center justify-center gap-1.5 cursor-pointer mt-2"
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-all active:scale-95 text-xs flex items-center justify-center gap-1.5 cursor-pointer mt-2 focus:ring-2 focus:ring-indigo-500/25"
                 >
                   <Plus className="w-3.5 h-3.5" /> Allocate Milestone
                 </button>
@@ -587,7 +587,7 @@ export default function ManagementView({ currentUser }: ManagementViewProps) {
                 onClick={() => { setActiveTab('all'); setCurrentPage(1); }}
                 className={`px-4 py-2 border-b-2 transition-all cursor-pointer ${
                   activeTab === 'all' 
-                    ? 'border-slate-900 text-slate-950 font-bold' 
+                    ? 'border-indigo-600 text-indigo-700 font-bold' 
                     : 'border-transparent text-slate-400 hover:text-slate-600'
                 }`}
               >
@@ -597,7 +597,7 @@ export default function ManagementView({ currentUser }: ManagementViewProps) {
                 onClick={() => { setActiveTab('mombasa'); setCurrentPage(1); }}
                 className={`px-4 py-2 border-b-2 transition-all cursor-pointer ${
                   activeTab === 'mombasa' 
-                    ? 'border-slate-900 text-slate-950 font-bold' 
+                    ? 'border-indigo-600 text-indigo-700 font-bold' 
                     : 'border-transparent text-slate-400 hover:text-slate-600'
                 }`}
               >
@@ -607,7 +607,7 @@ export default function ManagementView({ currentUser }: ManagementViewProps) {
                 onClick={() => { setActiveTab('locations'); setCurrentPage(1); }}
                 className={`px-4 py-2 border-b-2 transition-all cursor-pointer ${
                   activeTab === 'locations' 
-                    ? 'border-slate-900 text-slate-950 font-bold' 
+                    ? 'border-indigo-600 text-indigo-700 font-bold' 
                     : 'border-transparent text-slate-400 hover:text-slate-600'
                 }`}
               >

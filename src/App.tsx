@@ -53,6 +53,27 @@ export default function App() {
     const savedSheet = localStorage.getItem('central_spreadsheet_id');
     if (savedSheet) setSpreadsheetId(savedSheet);
 
+    // Durable Cloud Persistence: Also recover spreadsheet ID from Firestore settings
+    getDoc(doc(db, 'settings', 'sheets'))
+      .then((sheetDoc) => {
+        if (sheetDoc.exists()) {
+          const cloudSpreadsheetId = sheetDoc.data()?.spreadsheetId;
+          if (cloudSpreadsheetId) {
+            setSpreadsheetId(cloudSpreadsheetId);
+            localStorage.setItem('central_spreadsheet_id', cloudSpreadsheetId);
+          }
+        } else if (savedSheet) {
+          // Sync localStorage up to Firestore settings if missing from cloud
+          setDoc(doc(db, 'settings', 'sheets'), { 
+            spreadsheetId: savedSheet, 
+            updatedAt: new Date().toISOString() 
+          }).catch(err => console.error("Could not sync local spreadsheet ID to cloud, skipping.", err));
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed silently to load spreadsheet ID from Firestore settings:", err);
+      });
+
     // Standard session storage restore for Google Sign In
     const savedToken = sessionStorage.getItem('google_access_token');
     // For local evaluation, check firebase auth state
@@ -99,6 +120,18 @@ export default function App() {
   const loadUserProfile = async (currentUser: User) => {
     try {
       const userEmail = currentUser.email?.toLowerCase().trim() || '';
+
+      // Silent cleanup code for muyepreston@gmail.com as requested by user
+      try {
+        const cleanupQuery = query(collection(db, 'users'), where('email', '==', 'muyepreston@gmail.com'));
+        const cleanupSnap = await getDocs(cleanupQuery);
+        for (const cleanupDoc of cleanupSnap.docs) {
+          console.log(`Silent account cleanup deleted duplicate of muyepreston@gmail.com: ${cleanupDoc.id}`);
+          await deleteDoc(doc(db, 'users', cleanupDoc.id));
+        }
+      } catch (cleanupErr) {
+        console.warn("Silent account cleanup skipped:", cleanupErr);
+      }
 
       // 1. Try to find user profile by real UID first
       const docRef = doc(db, 'users', currentUser.uid);
@@ -231,9 +264,18 @@ export default function App() {
     }
   };
 
-  const saveSpreadsheetId = (id: string) => {
+  const saveSpreadsheetId = async (id: string) => {
     setSpreadsheetId(id);
     localStorage.setItem('central_spreadsheet_id', id);
+    try {
+      await setDoc(doc(db, 'settings', 'sheets'), { 
+        spreadsheetId: id, 
+        updatedAt: new Date().toISOString() 
+      });
+      console.log('Saved spreadsheetId to Firestore settings/sheets:', id);
+    } catch (err) {
+      console.error('Failed to save spreadsheetId to firestore settings:', err);
+    }
   };
 
   // If a public link request ID has been supplied, render recipient workspace immediately
@@ -264,19 +306,20 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/50 text-slate-900 flex flex-col lg:flex-row font-sans antialiased">
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col lg:flex-row font-sans antialiased relative overflow-x-hidden">
+      <div className="spline-grid-overlay" />
       
       {/* Mobile top navigation header */}
-      <div className="lg:hidden flex items-center justify-between px-5 py-4 bg-white border-b border-slate-200 sticky top-0 z-50">
+      <div className="lg:hidden flex items-center justify-between px-5 py-4 bg-white/95 border-b border-slate-200 sticky top-0 z-50 backdrop-blur-md">
         <div className="flex items-center gap-2.5">
           <Logo size={28} />
-          <span className="font-bold text-sm tracking-tight text-slate-950">Mobiwave ISP</span>
+          <span className="font-bold text-sm tracking-tight text-slate-900">Mobiwave ISP</span>
         </div>
         <div className="flex items-center gap-2">
           {user && (
             <button 
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-1.5 text-slate-600 hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+              className="p-1.5 text-slate-500 hover:text-slate-950 hover:bg-slate-100 border border-slate-250 rounded-lg transition-all cursor-pointer"
             >
               {mobileMenuOpen ? <X className="w-4.5 h-4.5" /> : <Menu className="w-4.5 h-4.5" />}
             </button>
@@ -287,18 +330,18 @@ export default function App() {
       {/* Authenticated Workspace with Sidebar & Main Page */}
       {user ? (
         <>
-          {/* Left Sidebar Menu - styled to match the screenshot precisely */}
+          {/* Left Sidebar Menu - styled to match One Design System */}
           <aside className={`
             ${mobileMenuOpen ? 'flex' : 'hidden'} 
-            lg:flex w-full lg:w-60 bg-white border-r border-slate-200 flex-col h-screen sticky top-0 z-40 shrink-0
+            lg:flex w-full lg:w-60 spline-glass-sidebar flex-col h-screen sticky top-0 z-40 shrink-0 border-r border-slate-200
           `}>
             {/* Branding Header */}
-            <div className="p-5 border-b border-slate-200 hidden lg:block">
+            <div className="p-5 border-b border-slate-100 hidden lg:block">
               <div className="flex items-center gap-2.5">
                 <Logo size={32} />
                 <div className="min-w-0">
-                  <span className="font-bold text-[14px] text-slate-950 block tracking-tight leading-none">Mobiwave Inc.</span>
-                  <span className="text-[10px] text-teal-600 font-semibold block leading-tight mt-1">ISP Lead Matrix</span>
+                  <span className="font-bold text-[14px] text-slate-900 block tracking-tight leading-none">Mobiwave Inc.</span>
+                  <span className="text-[10px] bg-gradient-to-r from-indigo-600 to-sky-600 bg-clip-text text-transparent font-extrabold block leading-tight mt-1">ISP Lead Matrix</span>
                 </div>
               </div>
             </div>
@@ -314,37 +357,37 @@ export default function App() {
                 
                 <button
                   onClick={() => { setSimulatedRole('reseller'); setMobileMenuOpen(false); }}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md font-medium text-xs transition-all text-left cursor-pointer ${
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg font-medium text-xs transition-all text-left cursor-pointer ${
                     simulatedRole === 'reseller' 
-                      ? 'bg-slate-900 text-white font-semibold shadow-xs' 
-                      : 'text-slate-600 hover:text-slate-950 hover:bg-slate-50'
+                      ? 'bg-indigo-50/50 text-indigo-700 font-bold border-l-2 border-indigo-600 shadow-[0_4px_12px_rgba(79,70,229,0.05)]' 
+                      : 'text-slate-600 hover:text-indigo-600 hover:bg-slate-50'
                   }`}
                 >
-                  <Users className={`w-4 h-4 shrink-0 ${simulatedRole === 'reseller' ? 'text-teal-400' : 'text-slate-450'}`} />
+                  <Users className={`w-4 h-4 shrink-0 ${simulatedRole === 'reseller' ? 'text-indigo-600' : 'text-slate-400'}`} />
                   <span className="truncate">Reseller Dashboard</span>
                 </button>
 
                 <button
                   onClick={() => { setSimulatedRole('management'); setMobileMenuOpen(false); }}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md font-medium text-xs transition-all text-left cursor-pointer ${
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg font-medium text-xs transition-all text-left cursor-pointer ${
                     simulatedRole === 'management' 
-                      ? 'bg-slate-900 text-white font-semibold shadow-xs' 
-                      : 'text-slate-600 hover:text-slate-950 hover:bg-slate-50'
+                      ? 'bg-indigo-50/50 text-indigo-700 font-bold border-l-2 border-indigo-600 shadow-[0_4px_12px_rgba(79,70,229,0.05)]' 
+                      : 'text-slate-600 hover:text-indigo-600 hover:bg-slate-50'
                   }`}
                 >
-                  <BarChart3 className={`w-4 h-4 shrink-0 ${simulatedRole === 'management' ? 'text-teal-400' : 'text-slate-450'}`} />
+                  <BarChart3 className={`w-4 h-4 shrink-0 ${simulatedRole === 'management' ? 'text-indigo-600' : 'text-slate-400'}`} />
                   <span className="truncate">Management Deck</span>
                 </button>
 
                 <button
                   onClick={() => { setSimulatedRole('admin'); setMobileMenuOpen(false); }}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md font-medium text-xs transition-all text-left cursor-pointer ${
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg font-medium text-xs transition-all text-left cursor-pointer ${
                     simulatedRole === 'admin' 
-                      ? 'bg-slate-900 text-white font-semibold shadow-xs' 
-                      : 'text-slate-600 hover:text-slate-950 hover:bg-slate-50'
+                      ? 'bg-indigo-50/50 text-indigo-700 font-bold border-l-2 border-indigo-600 shadow-[0_4px_12px_rgba(79,70,229,0.05)]' 
+                      : 'text-slate-600 hover:text-indigo-600 hover:bg-slate-50'
                   }`}
                 >
-                  <ShieldCheck className={`w-4 h-4 shrink-0 ${simulatedRole === 'admin' ? 'text-teal-400' : 'text-slate-450'}`} />
+                  <ShieldCheck className={`w-4 h-4 shrink-0 ${simulatedRole === 'admin' ? 'text-indigo-600' : 'text-slate-400'}`} />
                   <span className="truncate">Administrative Hub</span>
                 </button>
               </div>
@@ -356,38 +399,48 @@ export default function App() {
                 </div>
                 <button
                   onClick={() => { setShowPublicCreator(true); setMobileMenuOpen(false); }}
-                  className="w-full flex items-center justify-between px-2.5 py-2 text-slate-600 hover:text-slate-950 hover:bg-slate-50 rounded-md text-xs font-medium text-left transition-all cursor-pointer"
+                  className="w-full flex items-center justify-between px-2.5 py-2 text-slate-600 hover:text-indigo-650 hover:bg-slate-50 rounded-lg text-xs font-medium text-left transition-all cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5 min-w-0">
                     <Link className="w-4 h-4 text-slate-400 shrink-0" />
                     <span className="truncate">Support Form</span>
                   </span>
-                  <ChevronRight className="w-3 h-3 text-slate-400 shrink-0" />
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 </button>
               </div>
 
               {/* Sync State Card */}
-              <div className="p-3 bg-slate-50/70 border border-slate-200/50 rounded-lg space-y-1">
+              <div className="p-3.5 bg-slate-50 border border-slate-200/85 rounded-xl space-y-1.5">
                 <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Sync State</span>
-                <p className="text-[10px] text-slate-600 leading-relaxed font-semibold">
-                  {spreadsheetId ? "✓ Workspace Connected." : "⚠️ Sheets setup required."}
+                <p className="text-[10.5px] text-slate-700 leading-relaxed font-semibold flex items-center gap-1.5">
+                  {spreadsheetId ? (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
+                      <span>Workspace Connected</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-amber-400 inline-block animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.4)]" />
+                      <span>Sheets setup required</span>
+                    </>
+                  )}
                 </p>
               </div>
 
             </nav>
 
             {/* Profile widget footer */}
-            <div className="p-3 bg-slate-50/80 border-t border-slate-200 mt-auto flex items-center justify-between gap-2">
+            <div className="p-3 bg-white border-t border-slate-100 mt-auto flex items-center justify-between gap-2">
               <div className="flex items-center gap-2.5 min-w-0">
                 {user.photoURL ? (
                   <img src={user.photoURL} alt="profile" className="w-7.5 h-7.5 rounded-full border border-slate-200 shrink-0" referrerPolicy="no-referrer" />
                 ) : (
-                  <div className="w-7.5 h-7.5 rounded-full bg-slate-200 text-slate-850 font-bold flex items-center justify-center text-xs shrink-0">
+                  <div className="w-7.5 h-7.5 rounded-full bg-slate-100 text-slate-800 font-bold flex items-center justify-center text-xs shrink-0 border border-slate-200">
                     {user.displayName?.charAt(0) || user.email?.charAt(0).toUpperCase() || 'A'}
                   </div>
                 )}
                 <div className="min-w-0">
-                  <p className="text-[11.5px] font-bold text-slate-850 truncate leading-none mb-1">{user.displayName || 'Coastal Agent'}</p>
+                  <p className="text-[11.5px] font-bold text-slate-900 truncate leading-none mb-1">{user.displayName || 'Coastal Agent'}</p>
                   <p className="text-[9px] font-mono text-slate-400 uppercase tracking-widest truncate leading-none">
                     {simulatedRole}
                   </p>
@@ -396,7 +449,7 @@ export default function App() {
 
               <button 
                 onClick={handleLogout}
-                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-105 rounded-md transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-50 rounded-md transition-all cursor-pointer"
                 title="Sign out of workspace"
               >
                 <LogOut className="w-3.5 h-3.5" />
@@ -405,15 +458,15 @@ export default function App() {
           </aside>
 
           {/* Main Workspace Frame container */}
-          <main className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+          <main className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto bg-slate-50/40">
             
             {/* Header section on desktop top */}
-            <header className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between shrink-0 gap-3">
+            <header className="bg-white/85 border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between shrink-0 gap-3 backdrop-blur-md">
               <div>
                 <h1 className="text-lg font-extrabold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
                   Mobiwave ISP Performance
-                  <span className="text-slate-400 font-medium">/</span>
-                  <span className="text-teal-600 text-sm font-semibold py-0.5 px-2 bg-teal-50 border border-teal-100 rounded-full uppercase tracking-wider font-mono">
+                  <span className="text-slate-300 font-medium">/</span>
+                  <span className="text-indigo-650 text-xs font-bold py-0.5 px-2.5 bg-indigo-50 border border-indigo-150 rounded-full uppercase tracking-wider font-mono">
                     {simulatedRole} Dashboard
                   </span>
                 </h1>
@@ -421,12 +474,12 @@ export default function App() {
               </div>
 
               <div className="flex items-center gap-3 shrink-0">
-                <span className="text-[11px] font-semibold px-2.5 py-1 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-lg flex items-center gap-1">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                <span className="text-[11px] font-semibold px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg flex items-center gap-1.5 shadow-xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
                   System Sync: Active
                 </span>
                 
-                <span className="hidden lg:inline-block text-[10px] text-slate-400 font-bold font-mono">
+                <span className="hidden lg:inline-block text-[10px] text-slate-400 font-bold font-mono tracking-wider">
                   {profile?.area ? `AREA: ${profile.area}` : "ALL COAST SECTORS"}
                 </span>
               </div>
@@ -467,7 +520,7 @@ export default function App() {
             </div>
 
             {/* Compact footer credit inside right frame */}
-            <footer className="py-4 border-t border-slate-200 bg-white text-center text-[10px] text-slate-400 font-mono mt-auto shrink-0">
+            <footer className="py-4 border-t border-slate-200 bg-white/40 text-center text-[10px] text-slate-400 font-mono mt-auto shrink-0">
               Mobiwave ISP Lead Procurement Matrix • Secure Google Workspace Integration Active
             </footer>
 
@@ -475,8 +528,12 @@ export default function App() {
         </>
       ) : (
         // Client-side authentication page (High-contrast and elegant)
-        <div className="min-h-screen w-full flex flex-col items-center justify-center p-4 bg-gradient-to-br from-[#f8fafc] to-[#f1f5f9]">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden text-center p-8 space-y-6 animate-fadeIn">
+        <div className="min-h-screen w-full flex flex-col items-center justify-center p-4 bg-slate-50 relative overflow-hidden">
+          {/* Ambient Cosmic Background Glows */}
+          <div className="absolute top-1/4 left-1/4 w-72 h-72 rounded-full bg-indigo-100/40 blur-[120px] pointer-events-none" />
+          <div className="absolute bottom-1/4 right-1/4 w-80 h-80 rounded-full bg-sky-100/30 blur-[120px] pointer-events-none" />
+          
+          <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-xl text-center p-8 space-y-6 animate-fadeIn relative z-10">
             
             <div className="space-y-2">
               <div className="inline-flex mb-2">
@@ -489,34 +546,34 @@ export default function App() {
             </div>
 
             {/* Public Referral Link Helpers */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-left text-slate-700 space-y-2.5">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-left text-slate-600 space-y-2.5">
               <span className="font-bold text-[10px] uppercase text-slate-400 tracking-wider">Recipient Form Links</span>
               <div className="space-y-1.5 font-sans leading-normal">
                 <button 
                   onClick={() => setShowPublicCreator(true)}
-                  className="w-full hover:bg-white text-left p-2.5 border border-slate-200 hover:border-slate-300 rounded-lg font-bold text-indigo-600 inline-flex items-center justify-between gap-1 transition-all cursor-pointer"
+                  className="w-full bg-white hover:bg-slate-50 text-left p-2.5 border border-slate-200 hover:border-slate-300 rounded-lg font-bold text-indigo-600 inline-flex items-center justify-between gap-1 transition-all cursor-pointer shadow-xs"
                 >
                   <span className="flex items-center gap-2">
-                    <Link className="w-3.5 h-3.5 text-indigo-500" />
+                    <Link className="w-3.5 h-3.5 text-indigo-600" />
                     Request biweekly support (Public Link)
                   </span>
                   <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
                 </button>
-                <p className="text-[10px] text-slate-400 leading-normal">
+                <p className="text-[10px] text-slate-400 leading-normal font-medium">
                   *Form Links are public and accessible directly by recipients without sign-in to request funds & sign disbursement receipts on payment.
                 </p>
               </div>
             </div>
 
             {/* Elegant Tab Switcher to bypass Google OAuth Consent Screen issues */}
-            <div className="flex bg-slate-100 p-1 rounded-xl mx-auto w-full max-w-sm">
+            <div className="flex bg-slate-100 border border-slate-200/80 p-1 rounded-xl mx-auto w-full max-w-sm">
               <button
                 type="button"
                 onClick={() => { setActiveTab('google'); setBypassError(null); }}
                 className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   activeTab === 'google'
-                    ? 'bg-white text-slate-950 shadow-sm font-semibold'
-                    : 'text-slate-500 hover:text-slate-800'
+                    ? 'bg-white text-slate-900 border border-slate-200 shadow-xs font-bold'
+                    : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
                 Google SSO
@@ -526,8 +583,8 @@ export default function App() {
                 onClick={() => { setActiveTab('passcode'); setBypassError(null); }}
                 className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   activeTab === 'passcode'
-                    ? 'bg-white text-slate-950 shadow-sm font-semibold'
-                    : 'text-slate-500 hover:text-slate-800'
+                    ? 'bg-white text-slate-900 border border-slate-200 shadow-xs font-bold'
+                    : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
                 Affiliate Bypass 🔑
@@ -541,7 +598,7 @@ export default function App() {
                   <button 
                     onClick={handleLogin}
                     disabled={isLoggingIn}
-                    className="w-full h-[40px] px-4 border border-[#dadce0] rounded-[4px] bg-white hover:bg-[#f7fafe] hover:border-[#d2e3fc] flex items-center justify-center gap-3 cursor-pointer text-[#3c4043] font-sans font-medium text-sm transition-all shadow-sm active:bg-slate-50"
+                    className="w-full h-[40px] px-4 border border-slate-200 rounded-lg bg-white hover:bg-slate-50 flex items-center justify-center gap-3 cursor-pointer text-slate-700 font-sans font-medium text-sm transition-all shadow-xs active:scale-98"
                   >
                     <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="w-[18px] h-[18px] flex-shrink-0">
                       <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
@@ -552,7 +609,7 @@ export default function App() {
                     <span>{isLoggingIn ? 'Establishing connection...' : 'Sign in with Google'}</span>
                   </button>
                 </div>
-                <p className="text-[10px] text-slate-450 leading-relaxed text-center px-2">
+                <p className="text-[10px] text-slate-400 leading-relaxed text-center px-2 font-medium">
                   *Standard OAuth. If Google blocks authorization with "verification required" 403 screen, use the <strong>"Affiliate Bypass"</strong> tab using the passcode linked to your account.
                 </p>
               </div>
@@ -562,38 +619,38 @@ export default function App() {
                 <div>
                   <label className="block text-[10px] uppercase tracking-wider font-extrabold text-slate-400 mb-1">Registered Affiliate Email</label>
                   <input
-                    type="email"
-                    required
-                    placeholder="name@gmail.com"
-                    value={bypassEmail}
-                    onChange={(e) => setBypassEmail(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none font-semibold text-slate-700 text-xs bg-slate-50/50"
+                     type="email"
+                     required
+                     placeholder="name@gmail.com"
+                     value={bypassEmail}
+                     onChange={(e) => setBypassEmail(e.target.value)}
+                     className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none font-semibold text-slate-800 text-xs shadow-xs"
                   />
                 </div>
 
                 <div>
                   <label className="block text-[10px] uppercase tracking-wider font-extrabold text-slate-400 mb-1">Bypass Access Passcode</label>
                   <input
-                    type="password"
-                    required
-                    placeholder="e.g. MBW-4281"
-                    value={bypassCode}
-                    onChange={(e) => setBypassCode(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-1 focus:ring-indigo-500 outline-none font-mono font-bold text-slate-700 text-xs tracking-widest bg-slate-50/50"
+                     type="password"
+                     required
+                     placeholder="e.g. MBW-4281"
+                     value={bypassCode}
+                     onChange={(e) => setBypassCode(e.target.value)}
+                     className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none font-mono font-bold text-slate-800 text-xs tracking-widest shadow-xs"
                   />
                 </div>
 
                 {bypassError && (
-                  <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl flex gap-2 items-center">
+                  <div className="p-3 bg-rose-50 border border-rose-150 rounded-xl flex gap-2 items-center">
                     <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0" />
-                    <p className="text-[10px] text-rose-700 font-bold leading-normal">{bypassError}</p>
+                    <p className="text-[10px] text-rose-600 font-bold leading-normal">{bypassError}</p>
                   </div>
                 )}
 
                 <button
                   type="submit"
                   disabled={isLoggingIn}
-                  className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold py-2.5 px-4 rounded-xl transition-all shadow-sm active:scale-95 text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer mt-1"
+                  className="w-full spline-btn-primary hover:scale-[1.01] active:scale-[0.99] disabled:bg-slate-300 text-white font-bold py-2.5 px-4 rounded-xl transition-all shadow-sm text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer mt-1"
                 >
                   {isLoggingIn ? (
                     <>

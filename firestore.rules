@@ -18,6 +18,11 @@ service cloud.firestore {
       allow write: if isSignedIn() && (request.auth.uid == userId || exists(/databases/$(database)/documents/users/$(request.auth.uid)));
     }
 
+    // Settings/Config collection
+    match /settings/{settingsId} {
+      allow read, write: if true;
+    }
+
     // Requests collection (can be completed via public links, hence relaxed rules for submissions, secured details otherwise)
     match /requests/{requestId} {
       allow read, write: if true;

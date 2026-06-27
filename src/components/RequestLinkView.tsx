@@ -199,13 +199,13 @@ The recipient, by digitally typing their signature name, explicitly confirms rec
       <div className="w-full max-w-xl bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
         
         {/* Modern high-contrast styled Header */}
-        <div className="bg-slate-900 px-8 py-7 text-white relative">
-          <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-sky-600 px-8 py-7 text-white relative">
+          <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none" />
           
           <div className="flex items-center gap-3 relative z-10">
             <Logo size={42} />
             <div>
-              <span className="text-[10px] text-teal-400 font-extrabold uppercase tracking-widest block">Mobiwave ISP Procurement</span>
+              <span className="text-[10px] text-sky-200 font-extrabold uppercase tracking-widest block">Mobiwave ISP Procurement</span>
               <h1 className="text-lg font-extrabold tracking-tight mt-0.5">Disbursements Ledger Public Terminal</h1>
             </div>
           </div>
@@ -309,7 +309,7 @@ The recipient, by digitally typing their signature name, explicitly confirms rec
 
               <button
                 type="submit"
-                className="w-full mt-2 bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                className="w-full mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 focus:ring-2 focus:ring-indigo-500/25"
               >
                 <Send className="w-3.5 h-3.5" /> File Biweekly Allocation Request
               </button>
