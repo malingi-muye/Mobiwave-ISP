@@ -4,7 +4,7 @@
 @theme {
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-
+  
   --radius-xs: 4px;
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -18,7 +18,7 @@
   --color-one-indigo: #5856D6;
   --color-one-orange: #FF9500;
   --color-one-purple: #AF52DE;
-
+  
   --color-bg-main: #F2F2F7;
   --color-bg-card: #FFFFFF;
 }

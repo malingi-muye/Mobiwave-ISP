@@ -13,7 +13,7 @@ import { Badge } from './components/ui/Badge';
 import { Input } from './components/ui/Input';
 import { Card } from './components/ui/Card';
 import { 
-  ShieldCheck, LogOut, RefreshCw, LayoutDashboard,
+  ShieldCheck, LogOut, RefreshCw, LayoutDashboard, 
   Activity, FileText, Menu, X, ChevronRight, Link
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -54,9 +54,9 @@ export default function App() {
             setSpreadsheetId(cloudSpreadsheetId);
             localStorage.setItem('central_spreadsheet_id', cloudSpreadsheetId);
           } else if (savedSheet) {
-            setDoc(doc(db, 'settings', 'sheets'), {
-              spreadsheetId: savedSheet,
-              updatedAt: new Date().toISOString()
+            setDoc(doc(db, 'settings', 'sheets'), { 
+              spreadsheetId: savedSheet, 
+              updatedAt: new Date().toISOString() 
             });
           }
         } else if (savedSheet) {
@@ -274,30 +274,30 @@ export default function App() {
             <nav className="flex-1 px-4 space-y-2">
               <div className="px-4 py-2 text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Dashboards</div>
               
-              <SidebarItem
-                active={simulatedRole === 'reseller'}
-                icon={<LayoutDashboard size={20} />}
-                label="Field Agent"
-                onClick={() => { setSimulatedRole('reseller'); setMobileMenuOpen(false); }}
+              <SidebarItem 
+                active={simulatedRole === 'reseller'} 
+                icon={<LayoutDashboard size={20} />} 
+                label="Field Agent" 
+                onClick={() => { setSimulatedRole('reseller'); setMobileMenuOpen(false); }} 
               />
-              <SidebarItem
-                active={simulatedRole === 'management'}
-                icon={<Activity size={20} />}
-                label="Oversight"
-                onClick={() => { setSimulatedRole('management'); setMobileMenuOpen(false); }}
+              <SidebarItem 
+                active={simulatedRole === 'management'} 
+                icon={<Activity size={20} />} 
+                label="Oversight" 
+                onClick={() => { setSimulatedRole('management'); setMobileMenuOpen(false); }} 
               />
-              <SidebarItem
-                active={simulatedRole === 'admin'}
-                icon={<ShieldCheck size={20} />}
-                label="System Admin"
-                onClick={() => { setSimulatedRole('admin'); setMobileMenuOpen(false); }}
+              <SidebarItem 
+                active={simulatedRole === 'admin'} 
+                icon={<ShieldCheck size={20} />} 
+                label="System Admin" 
+                onClick={() => { setSimulatedRole('admin'); setMobileMenuOpen(false); }} 
               />
 
               <div className="px-4 py-6 text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Tools</div>
-              <SidebarItem
-                icon={<FileText size={20} />}
-                label="Support Form"
-                onClick={() => { setShowPublicCreator(true); setMobileMenuOpen(false); }}
+              <SidebarItem 
+                icon={<FileText size={20} />} 
+                label="Support Form" 
+                onClick={() => { setShowPublicCreator(true); setMobileMenuOpen(false); }} 
               />
             </nav>
 
@@ -407,7 +407,7 @@ export default function App() {
 
             <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 text-left space-y-4">
                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Recipient Form Links</span>
-               <button
+               <button 
                  onClick={() => setShowPublicCreator(true)}
                  className="w-full bg-white hover:bg-slate-50 p-4 border border-slate-200 rounded-2xl flex items-center justify-between group transition-all"
                >
@@ -420,13 +420,13 @@ export default function App() {
             </div>
 
             <div className="bg-slate-50 p-2 rounded-2xl flex border border-slate-100">
-              <button
+              <button 
                 onClick={() => setActiveTab('google')}
                 className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeTab === 'google' ? 'bg-white shadow-md text-one-blue' : 'text-slate-400'}`}
               >
                 Google SSO
               </button>
-              <button
+              <button 
                 onClick={() => setActiveTab('passcode')}
                 className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeTab === 'passcode' ? 'bg-white shadow-md text-one-blue' : 'text-slate-400'}`}
               >
@@ -462,7 +462,7 @@ export default function App() {
 
 function SidebarItem({ active, icon, label, onClick }: { active?: boolean, icon: React.ReactNode, label: string, onClick: () => void }) {
   return (
-    <button
+    <button 
       onClick={onClick}
       className={`
         w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-bold text-sm transition-all text-left
