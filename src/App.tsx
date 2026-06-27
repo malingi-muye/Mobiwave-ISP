@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { db, googleSignIn, logoutUser } from './lib/firebase';
-import { doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
+import { db, googleSignIn, logoutUser, auth } from './lib/firebase';
+import { doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, updateDoc } from 'firebase/firestore';
 import { User } from 'firebase/auth';
 import { UserRole, UserProfile } from './types';
 import AdminView from './components/AdminView';
@@ -8,11 +8,13 @@ import ManagementView from './components/ManagementView';
 import ResellerView from './components/ResellerView';
 import RequestLinkView from './components/RequestLinkView';
 import { Logo } from './components/Logo';
+import { Button } from './components/ui/Button';
+import { Badge } from './components/ui/Badge';
+import { Input } from './components/ui/Input';
+import { Card } from './components/ui/Card';
 import { 
-  ShieldCheck, LogOut, RefreshCw, Layers, MapPin, 
-  Settings, Users, Network, Link, HeartHandshake, Compass,
-  ChevronRight, Laptop, UserCheck, ShieldAlert, BarChart3, HelpCircle,
-  Menu, X
+  ShieldCheck, LogOut, RefreshCw, LayoutDashboard,
+  Activity, FileText, Menu, X, ChevronRight, Link
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -25,35 +27,25 @@ export default function App() {
   const [spreadsheetId, setSpreadsheetId] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Parse public request form links
   const [publicReqId, setPublicReqId] = useState<string | null>(null);
   const [showPublicCreator, setShowPublicCreator] = useState(false);
 
-  // Registered Agent Bypass sign-in state
   const [activeTab, setActiveTab] = useState<'google' | 'passcode'>('google');
   const [bypassEmail, setBypassEmail] = useState('');
   const [bypassCode, setBypassCode] = useState('');
   const [bypassError, setBypassError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check parameters
     const params = new URLSearchParams(window.location.search);
     const reqValue = params.get('reqId');
-    if (reqValue) {
-      setPublicReqId(reqValue);
-    }
+    if (reqValue) setPublicReqId(reqValue);
     
-    // Check if mode is request creation
     const mode = params.get('mode');
-    if (mode === 'fill-request') {
-      setShowPublicCreator(true);
-    }
+    if (mode === 'fill-request') setShowPublicCreator(true);
 
-    // Recover cached spreadsheet ID
     const savedSheet = localStorage.getItem('central_spreadsheet_id');
     if (savedSheet) setSpreadsheetId(savedSheet);
 
-    // Durable Cloud Persistence: Also recover spreadsheet ID from Firestore settings
     getDoc(doc(db, 'settings', 'sheets'))
       .then((sheetDoc) => {
         if (sheetDoc.exists()) {
@@ -61,79 +53,67 @@ export default function App() {
           if (cloudSpreadsheetId) {
             setSpreadsheetId(cloudSpreadsheetId);
             localStorage.setItem('central_spreadsheet_id', cloudSpreadsheetId);
+          } else if (savedSheet) {
+            setDoc(doc(db, 'settings', 'sheets'), {
+              spreadsheetId: savedSheet,
+              updatedAt: new Date().toISOString()
+            });
           }
         } else if (savedSheet) {
-          // Sync localStorage up to Firestore settings if missing from cloud
           setDoc(doc(db, 'settings', 'sheets'), { 
             spreadsheetId: savedSheet, 
             updatedAt: new Date().toISOString() 
-          }).catch(err => console.error("Could not sync local spreadsheet ID to cloud, skipping.", err));
+          });
         }
-      })
-      .catch((err) => {
-        console.warn("Failed silently to load spreadsheet ID from Firestore settings:", err);
       });
 
-    // Standard session storage restore for Google Sign In
-    const savedToken = sessionStorage.getItem('google_access_token');
-    // For local evaluation, check firebase auth state
-    const unsubscribe = doc && setDoc && import('./lib/firebase').then(({ auth }) => {
-      auth.onAuthStateChanged(async (currentUser) => {
-        if (currentUser) {
-          setUser(currentUser);
-          await loadUserProfile(currentUser);
-        } else {
-          const cachedBypass = sessionStorage.getItem('bypass_user');
-          if (cachedBypass) {
-            try {
-              const sessionData = JSON.parse(cachedBypass);
-              const mockUser = {
-                uid: sessionData.uid,
-                email: sessionData.email,
-                displayName: sessionData.displayName,
-                emailVerified: true,
-                isAnonymous: false,
-                providerId: 'password_bypass',
-              } as unknown as User;
-              setUser(mockUser);
-              setProfile(sessionData);
-              setSimulatedRole(sessionData.role);
-            } catch (e) {
-              sessionStorage.removeItem('bypass_user');
-              setUser(null);
-              setProfile(null);
-            }
-          } else {
+    const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+        await loadUserProfile(currentUser);
+      } else {
+        const cachedBypass = sessionStorage.getItem('bypass_user');
+        if (cachedBypass) {
+          try {
+            const sessionData = JSON.parse(cachedBypass);
+            const mockUser = {
+              uid: sessionData.uid,
+              email: sessionData.email,
+              displayName: sessionData.displayName,
+              emailVerified: true,
+              isAnonymous: false,
+              providerId: 'password_bypass',
+            } as unknown as User;
+            setUser(mockUser);
+            setProfile(sessionData);
+            setSimulatedRole(sessionData.role);
+          } catch (e) {
+            sessionStorage.removeItem('bypass_user');
             setUser(null);
-            setProfile(null);
           }
+        } else {
+          setUser(null);
         }
-        setLoading(false);
-      });
+      }
+      setLoading(false);
     });
 
-    return () => {
-      // Unsubscribe cleanup handled on auth load
-    };
+    return () => unsubscribe();
   }, []);
 
   const loadUserProfile = async (currentUser: User) => {
     try {
       const userEmail = currentUser.email?.toLowerCase().trim() || '';
 
-      // Silent cleanup code for muyepreston@gmail.com as requested by user
+      // Silent cleanup code for muyepreston@gmail.com
       try {
         const cleanupQuery = query(collection(db, 'users'), where('email', '==', 'muyepreston@gmail.com'));
         const cleanupSnap = await getDocs(cleanupQuery);
         for (const cleanupDoc of cleanupSnap.docs) {
-          console.log(`Silent account cleanup deleted duplicate of muyepreston@gmail.com: ${cleanupDoc.id}`);
           await deleteDoc(doc(db, 'users', cleanupDoc.id));
         }
-      } catch (cleanupErr) {
-        console.warn("Silent account cleanup skipped:", cleanupErr);
-      }
+      } catch (err) {}
 
-      // 1. Try to find user profile by real UID first
       const docRef = doc(db, 'users', currentUser.uid);
       const docSnap = await getDoc(docRef);
 
@@ -142,26 +122,19 @@ export default function App() {
         const isAdminEmail = userEmail === 'malingib9@gmail.com';
         if (isAdminEmail && data.role !== 'admin') {
           data.role = 'admin';
-          const { updateDoc } = await import('firebase/firestore');
           await updateDoc(docRef, { role: 'admin' });
         }
         setProfile(data);
         setSimulatedRole(data.role);
       } else {
-        // 2. Check if there is a pre-registered profile with a pseudo UID matching this email
         const usersQuery = query(collection(db, 'users'), where('email', '==', userEmail));
         const querySnap = await getDocs(usersQuery);
 
         if (!querySnap.empty) {
           const preRegDoc = querySnap.docs[0];
           const preRegData = preRegDoc.data() as UserProfile;
+          if (preRegDoc.id !== currentUser.uid) await deleteDoc(doc(db, 'users', preRegDoc.id));
 
-          // Delete old temporary pseudo-UID document if it is different
-          if (preRegDoc.id !== currentUser.uid) {
-            await deleteDoc(doc(db, 'users', preRegDoc.id));
-          }
-
-          // Move/save under the actual authenticated user UID
           const mergedProfile: UserProfile = {
             ...preRegData,
             uid: currentUser.uid,
@@ -172,7 +145,6 @@ export default function App() {
           setProfile(mergedProfile);
           setSimulatedRole(mergedProfile.role);
         } else {
-          // 3. No pre-registry found, auto-provision fresh default account
           const isAdminEmail = userEmail === 'malingib9@gmail.com';
           const defaultRole: UserRole = isAdminEmail ? 'admin' : 'reseller';
           const newProfile: UserProfile = {
@@ -180,9 +152,8 @@ export default function App() {
             email: userEmail,
             displayName: currentUser.displayName || 'Coastal Agent',
             role: defaultRole,
-            area: 'Mombasa' // Default active area
+            area: 'Mombasa'
           };
-
           await setDoc(docRef, newProfile);
           setProfile(newProfile);
           setSimulatedRole(defaultRole);
@@ -218,11 +189,6 @@ export default function App() {
 
   const handleBypassLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!bypassEmail || !bypassCode) {
-      setBypassError('Provide both registered email & bypass passcode.');
-      return;
-    }
-
     setIsLoggingIn(true);
     setBypassError(null);
     try {
@@ -230,19 +196,16 @@ export default function App() {
       const snap = await getDocs(q);
 
       if (snap.empty) {
-        setBypassError('Account not registered in Affiliate Directory.');
+        setBypassError('Account not registered.');
         return;
       }
 
-      const userDoc = snap.docs[0];
-      const userData = userDoc.data() as UserProfile;
-
-      if (!userData.password || userData.password.trim() !== bypassCode.trim()) {
-        setBypassError('Invalid bypass passcode. Check your email or contact Admin.');
+      const userData = snap.docs[0].data() as UserProfile;
+      if (userData.password?.trim() !== bypassCode.trim()) {
+        setBypassError('Invalid passcode.');
         return;
       }
 
-      // Successful bypass matching
       const mockUser = {
         uid: userData.uid,
         email: userData.email,
@@ -256,9 +219,8 @@ export default function App() {
       setUser(mockUser);
       setProfile(userData);
       setSimulatedRole(userData.role);
-    } catch (err: any) {
-      console.error(err);
-      setBypassError('Bypass authenticating offline. Try again.');
+    } catch (err) {
+      setBypassError('Auth failed.');
     } finally {
       setIsLoggingIn(false);
     }
@@ -267,408 +229,248 @@ export default function App() {
   const saveSpreadsheetId = async (id: string) => {
     setSpreadsheetId(id);
     localStorage.setItem('central_spreadsheet_id', id);
-    try {
-      await setDoc(doc(db, 'settings', 'sheets'), { 
-        spreadsheetId: id, 
-        updatedAt: new Date().toISOString() 
-      });
-      console.log('Saved spreadsheetId to Firestore settings/sheets:', id);
-    } catch (err) {
-      console.error('Failed to save spreadsheetId to firestore settings:', err);
-    }
+    await setDoc(doc(db, 'settings', 'sheets'), { spreadsheetId: id, updatedAt: new Date().toISOString() });
   };
 
-  // If a public link request ID has been supplied, render recipient workspace immediately
-  if (publicReqId) {
-    return (
-      <RequestLinkView 
-        requestId={publicReqId} 
-        onBackToApp={() => {
-          // Clear query param and set state
-          window.history.replaceState({}, document.title, window.location.pathname);
-          setPublicReqId(null);
-        }}
-      />
-    );
-  }
-
-  // If explicit link creation mode is engaged (allows recipient to submit request)
-  if (showPublicCreator) {
-    return (
-      <RequestLinkView 
-        requestId={null} 
-        onBackToApp={() => {
-          window.history.replaceState({}, document.title, window.location.pathname);
-          setShowPublicCreator(false);
-        }}
-      />
-    );
-  }
+  if (publicReqId) return <RequestLinkView requestId={publicReqId} onBackToApp={() => { window.history.replaceState({}, '', '/'); setPublicReqId(null); }} />;
+  if (showPublicCreator) return <RequestLinkView requestId={null} onBackToApp={() => { window.history.replaceState({}, '', '/'); setShowPublicCreator(false); }} />;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col lg:flex-row font-sans antialiased relative overflow-x-hidden">
-      <div className="spline-grid-overlay" />
+    <div className="min-h-screen bg-bg-main text-foreground flex flex-col lg:flex-row antialiased relative">
+      <div className="spline-grid-overlay opacity-20" />
       
-      {/* Mobile top navigation header */}
-      <div className="lg:hidden flex items-center justify-between px-5 py-4 bg-white/95 border-b border-slate-200 sticky top-0 z-50 backdrop-blur-md">
-        <div className="flex items-center gap-2.5">
+      {/* Mobile Nav */}
+      <div className="lg:hidden flex items-center justify-between px-6 py-4 one-glass border-b border-white/30 sticky top-0 z-50">
+        <div className="flex items-center gap-3">
           <Logo size={28} />
-          <span className="font-bold text-sm tracking-tight text-slate-900">Mobiwave ISP</span>
+          <span className="font-extrabold text-sm tracking-tight">Mobiwave</span>
         </div>
-        <div className="flex items-center gap-2">
-          {user && (
-            <button 
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-1.5 text-slate-500 hover:text-slate-950 hover:bg-slate-100 border border-slate-250 rounded-lg transition-all cursor-pointer"
-            >
-              {mobileMenuOpen ? <X className="w-4.5 h-4.5" /> : <Menu className="w-4.5 h-4.5" />}
-            </button>
-          )}
-        </div>
+        {user && (
+          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 bg-white/50 rounded-xl">
+            {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        )}
       </div>
 
-      {/* Authenticated Workspace with Sidebar & Main Page */}
       {user ? (
         <>
-          {/* Left Sidebar Menu - styled to match One Design System */}
+          {/* Sidebar */}
           <aside className={`
             ${mobileMenuOpen ? 'flex' : 'hidden'} 
-            lg:flex w-full lg:w-60 spline-glass-sidebar flex-col h-screen sticky top-0 z-40 shrink-0 border-r border-slate-200
+            lg:flex w-full lg:w-72 one-glass-dark lg:m-4 lg:rounded-[32px] flex-col h-[calc(100vh-32px)] sticky top-4 z-40 shrink-0
           `}>
-            {/* Branding Header */}
-            <div className="p-5 border-b border-slate-100 hidden lg:block">
-              <div className="flex items-center gap-2.5">
-                <Logo size={32} />
-                <div className="min-w-0">
-                  <span className="font-bold text-[14px] text-slate-900 block tracking-tight leading-none">Mobiwave Inc.</span>
-                  <span className="text-[10px] bg-gradient-to-r from-indigo-600 to-sky-600 bg-clip-text text-transparent font-extrabold block leading-tight mt-1">ISP Lead Matrix</span>
+            <div className="p-8">
+              <div className="flex items-center gap-4">
+                <div className="p-2 bg-white rounded-2xl">
+                  <Logo size={32} />
+                </div>
+                <div>
+                  <h2 className="font-black text-lg tracking-tighter leading-none">Mobiwave</h2>
+                  <p className="text-[10px] font-bold text-white/50 uppercase tracking-widest mt-1">Lead Matrix v3.4</p>
                 </div>
               </div>
             </div>
 
-            {/* Navigation Body */}
-            <nav className="flex-1 p-3 space-y-5 overflow-y-auto">
+            <nav className="flex-1 px-4 space-y-2">
+              <div className="px-4 py-2 text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Dashboards</div>
               
-              {/* Home / Portals Segment */}
-              <div className="space-y-1">
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2.5 py-1 mb-1.5">
-                  Home
-                </div>
-                
-                <button
-                  onClick={() => { setSimulatedRole('reseller'); setMobileMenuOpen(false); }}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg font-medium text-xs transition-all text-left cursor-pointer ${
-                    simulatedRole === 'reseller' 
-                      ? 'bg-indigo-50/50 text-indigo-700 font-bold border-l-2 border-indigo-600 shadow-[0_4px_12px_rgba(79,70,229,0.05)]' 
-                      : 'text-slate-600 hover:text-indigo-600 hover:bg-slate-50'
-                  }`}
-                >
-                  <Users className={`w-4 h-4 shrink-0 ${simulatedRole === 'reseller' ? 'text-indigo-600' : 'text-slate-400'}`} />
-                  <span className="truncate">Reseller Dashboard</span>
-                </button>
+              <SidebarItem
+                active={simulatedRole === 'reseller'}
+                icon={<LayoutDashboard size={20} />}
+                label="Field Agent"
+                onClick={() => { setSimulatedRole('reseller'); setMobileMenuOpen(false); }}
+              />
+              <SidebarItem
+                active={simulatedRole === 'management'}
+                icon={<Activity size={20} />}
+                label="Oversight"
+                onClick={() => { setSimulatedRole('management'); setMobileMenuOpen(false); }}
+              />
+              <SidebarItem
+                active={simulatedRole === 'admin'}
+                icon={<ShieldCheck size={20} />}
+                label="System Admin"
+                onClick={() => { setSimulatedRole('admin'); setMobileMenuOpen(false); }}
+              />
 
-                <button
-                  onClick={() => { setSimulatedRole('management'); setMobileMenuOpen(false); }}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg font-medium text-xs transition-all text-left cursor-pointer ${
-                    simulatedRole === 'management' 
-                      ? 'bg-indigo-50/50 text-indigo-700 font-bold border-l-2 border-indigo-600 shadow-[0_4px_12px_rgba(79,70,229,0.05)]' 
-                      : 'text-slate-600 hover:text-indigo-600 hover:bg-slate-50'
-                  }`}
-                >
-                  <BarChart3 className={`w-4 h-4 shrink-0 ${simulatedRole === 'management' ? 'text-indigo-600' : 'text-slate-400'}`} />
-                  <span className="truncate">Management Deck</span>
-                </button>
+              <div className="px-4 py-6 text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Tools</div>
+              <SidebarItem
+                icon={<FileText size={20} />}
+                label="Support Form"
+                onClick={() => { setShowPublicCreator(true); setMobileMenuOpen(false); }}
+              />
+            </nav>
 
-                <button
-                  onClick={() => { setSimulatedRole('admin'); setMobileMenuOpen(false); }}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg font-medium text-xs transition-all text-left cursor-pointer ${
-                    simulatedRole === 'admin' 
-                      ? 'bg-indigo-50/50 text-indigo-700 font-bold border-l-2 border-indigo-600 shadow-[0_4px_12px_rgba(79,70,229,0.05)]' 
-                      : 'text-slate-600 hover:text-indigo-600 hover:bg-slate-50'
-                  }`}
-                >
-                  <ShieldCheck className={`w-4 h-4 shrink-0 ${simulatedRole === 'admin' ? 'text-indigo-600' : 'text-slate-400'}`} />
-                  <span className="truncate">Administrative Hub</span>
-                </button>
-              </div>
-
-              {/* Reference Documents Section */}
-              <div className="space-y-1">
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2.5 py-1 mb-1.5">
-                  Documents
-                </div>
-                <button
-                  onClick={() => { setShowPublicCreator(true); setMobileMenuOpen(false); }}
-                  className="w-full flex items-center justify-between px-2.5 py-2 text-slate-600 hover:text-indigo-650 hover:bg-slate-50 rounded-lg text-xs font-medium text-left transition-all cursor-pointer"
-                >
-                  <span className="flex items-center gap-2.5 min-w-0">
-                    <Link className="w-4 h-4 text-slate-400 shrink-0" />
-                    <span className="truncate">Support Form</span>
-                  </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                </button>
-              </div>
-
+            <div className="p-6 mt-auto">
               {/* Sync State Card */}
-              <div className="p-3.5 bg-slate-50 border border-slate-200/85 rounded-xl space-y-1.5">
-                <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Sync State</span>
-                <p className="text-[10.5px] text-slate-700 leading-relaxed font-semibold flex items-center gap-1.5">
+              <div className="mb-6 p-4 bg-white/5 rounded-2xl space-y-2">
+                <span className="text-[9px] uppercase font-black text-white/30 tracking-widest block">Sync State</span>
+                <p className="text-[10px] text-white/70 font-bold flex items-center gap-2">
                   {spreadsheetId ? (
                     <>
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
-                      <span>Workspace Connected</span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-one-green shadow-[0_0_8px_rgba(52,199,89,0.4)]" />
+                      Connected
                     </>
                   ) : (
                     <>
-                      <span className="w-2 h-2 rounded-full bg-amber-400 inline-block animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.4)]" />
-                      <span>Sheets setup required</span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-one-orange shadow-[0_0_8px_rgba(255,149,0,0.4)]" />
+                      Pending Setup
                     </>
                   )}
                 </p>
               </div>
 
-            </nav>
-
-            {/* Profile widget footer */}
-            <div className="p-3 bg-white border-t border-slate-100 mt-auto flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5 min-w-0">
-                {user.photoURL ? (
-                  <img src={user.photoURL} alt="profile" className="w-7.5 h-7.5 rounded-full border border-slate-200 shrink-0" referrerPolicy="no-referrer" />
-                ) : (
-                  <div className="w-7.5 h-7.5 rounded-full bg-slate-100 text-slate-800 font-bold flex items-center justify-center text-xs shrink-0 border border-slate-200">
-                    {user.displayName?.charAt(0) || user.email?.charAt(0).toUpperCase() || 'A'}
+              <div className="one-glass bg-white/10 rounded-3xl p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-one-blue flex items-center justify-center font-black text-sm">
+                    {user.displayName?.charAt(0) || 'A'}
                   </div>
-                )}
-                <div className="min-w-0">
-                  <p className="text-[11.5px] font-bold text-slate-900 truncate leading-none mb-1">{user.displayName || 'Coastal Agent'}</p>
-                  <p className="text-[9px] font-mono text-slate-400 uppercase tracking-widest truncate leading-none">
-                    {simulatedRole}
-                  </p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold truncate">{user.displayName || 'Agent'}</p>
+                    <p className="text-[10px] font-bold text-white/50 truncate uppercase">{simulatedRole}</p>
+                  </div>
                 </div>
+                <button onClick={handleLogout} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
+                  <LogOut size={18} className="text-white/70" />
+                </button>
               </div>
-
-              <button 
-                onClick={handleLogout}
-                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-50 rounded-md transition-all cursor-pointer"
-                title="Sign out of workspace"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
             </div>
           </aside>
 
-          {/* Main Workspace Frame container */}
-          <main className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto bg-slate-50/40">
-            
-            {/* Header section on desktop top */}
-            <header className="bg-white/85 border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between shrink-0 gap-3 backdrop-blur-md">
+          {/* Main Content */}
+          <main className="flex-1 p-4 lg:p-8 overflow-y-auto">
+            <header className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
               <div>
-                <h1 className="text-lg font-extrabold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
-                  Mobiwave ISP Performance
-                  <span className="text-slate-300 font-medium">/</span>
-                  <span className="text-indigo-650 text-xs font-bold py-0.5 px-2.5 bg-indigo-50 border border-indigo-150 rounded-full uppercase tracking-wider font-mono">
-                    {simulatedRole} Dashboard
-                  </span>
+                <Badge variant="blue" className="mb-3">Live Network Status: Active</Badge>
+                <h1 className="text-4xl font-black tracking-tighter text-slate-900">
+                  {simulatedRole === 'reseller' && "Agent Performance"}
+                  {simulatedRole === 'management' && "Regional Oversight"}
+                  {simulatedRole === 'admin' && "System Administration"}
                 </h1>
-                <p className="text-xs text-slate-500 mt-0.5">Disbursements: biweekly support allocations • payroll payments: end of month.</p>
+                <p className="text-slate-400 font-medium mt-2 max-w-xl">
+                  Monitoring lead procurement, financial disbursements, and regional internet expansion metrics in real-time.
+                </p>
               </div>
 
-              <div className="flex items-center gap-3 shrink-0">
-                <span className="text-[11px] font-semibold px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg flex items-center gap-1.5 shadow-xs">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
-                  System Sync: Active
-                </span>
-                
-                <span className="hidden lg:inline-block text-[10px] text-slate-400 font-bold font-mono tracking-wider">
-                  {profile?.area ? `AREA: ${profile.area}` : "ALL COAST SECTORS"}
-                </span>
+              <div className="flex items-center gap-3">
+                <div className="text-right hidden sm:block">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Sector</p>
+                  <p className="font-bold text-slate-900">{profile?.area || 'All Sectors'}</p>
+                </div>
+                <div className="w-12 h-12 rounded-2xl one-card flex items-center justify-center text-one-blue">
+                  <RefreshCw size={24} className={loading ? 'animate-spin' : ''} />
+                </div>
               </div>
             </header>
 
-            {/* Actual dynamic dynamic content grids */}
-            <div className="p-6 flex-1 space-y-6">
-              
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={simulatedRole}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  {simulatedRole === 'admin' && (
-                    <AdminView 
-                      onSpreadsheetCreated={saveSpreadsheetId} 
-                      savedSpreadsheetId={spreadsheetId} 
-                    />
-                  )}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={simulatedRole}
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.02 }}
+                transition={{ duration: 0.4, cubicBezier: [0.4, 0, 0.2, 1] }}
+              >
+                {simulatedRole === 'admin' && <AdminView onSpreadsheetCreated={saveSpreadsheetId} savedSpreadsheetId={spreadsheetId} />}
+                {simulatedRole === 'management' && <ManagementView currentUser={user} />}
+                {simulatedRole === 'reseller' && <ResellerView user={user} userArea={profile?.area || 'Mombasa'} spreadsheetId={spreadsheetId} />}
+              </motion.div>
+            </AnimatePresence>
 
-                  {simulatedRole === 'management' && (
-                    <ManagementView currentUser={user} />
-                  )}
-
-                  {simulatedRole === 'reseller' && (
-                    <ResellerView 
-                      user={user} 
-                      userArea={profile?.area || 'Mombasa'} 
-                      spreadsheetId={spreadsheetId} 
-                    />
-                  )}
-                </motion.div>
-              </AnimatePresence>
-
-            </div>
-
-            {/* Compact footer credit inside right frame */}
-            <footer className="py-4 border-t border-slate-200 bg-white/40 text-center text-[10px] text-slate-400 font-mono mt-auto shrink-0">
-              Mobiwave ISP Lead Procurement Matrix • Secure Google Workspace Integration Active
+            <footer className="mt-20 py-8 border-t border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              <span>© 2026 Mobiwave ISP Matrix</span>
+              <div className="flex gap-6">
+                <span>System Secure</span>
+                <span>Google Cloud Connected</span>
+              </div>
             </footer>
-
           </main>
         </>
       ) : (
-        // Client-side authentication page (High-contrast and elegant)
-        <div className="min-h-screen w-full flex flex-col items-center justify-center p-4 bg-slate-50 relative overflow-hidden">
-          {/* Ambient Cosmic Background Glows */}
-          <div className="absolute top-1/4 left-1/4 w-72 h-72 rounded-full bg-indigo-100/40 blur-[120px] pointer-events-none" />
-          <div className="absolute bottom-1/4 right-1/4 w-80 h-80 rounded-full bg-sky-100/30 blur-[120px] pointer-events-none" />
-          
-          <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-xl text-center p-8 space-y-6 animate-fadeIn relative z-10">
-            
-            <div className="space-y-2">
-              <div className="inline-flex mb-2">
-                <Logo size={72} />
+        /* Login Screen */
+        <div className="min-h-screen w-full flex items-center justify-center p-6 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-full">
+            <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-one-blue/10 blur-[120px] rounded-full animate-pulse" />
+            <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-one-indigo/10 blur-[120px] rounded-full animate-pulse" style={{ animationDelay: '1s' }} />
+          </div>
+
+          <Card className="w-full max-w-[480px] p-12 relative z-10 text-center space-y-10 rounded-[48px]">
+            <div className="space-y-4">
+              <div className="w-24 h-24 bg-one-blue/5 rounded-[32px] flex items-center justify-center mx-auto mb-8 shadow-xl shadow-one-blue/5">
+                <Logo size={56} />
               </div>
-              <h2 className="text-xl font-bold tracking-tight text-slate-900">Mobiwave ISP Portal</h2>
-              <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-                Sign in with Google Workspace to submit lead connections, manage biweekly operational support allocations, and track performance targets.
+              <h2 className="text-4xl font-black tracking-tighter text-slate-900">Mobiwave Portal</h2>
+              <p className="text-slate-400 font-medium max-w-[280px] mx-auto leading-relaxed text-sm">
+                Sign in with Google Workspace to submit lead connections, manage allocations, and track targets.
               </p>
             </div>
 
-            {/* Public Referral Link Helpers */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-left text-slate-600 space-y-2.5">
-              <span className="font-bold text-[10px] uppercase text-slate-400 tracking-wider">Recipient Form Links</span>
-              <div className="space-y-1.5 font-sans leading-normal">
-                <button 
-                  onClick={() => setShowPublicCreator(true)}
-                  className="w-full bg-white hover:bg-slate-50 text-left p-2.5 border border-slate-200 hover:border-slate-300 rounded-lg font-bold text-indigo-600 inline-flex items-center justify-between gap-1 transition-all cursor-pointer shadow-xs"
-                >
-                  <span className="flex items-center gap-2">
-                    <Link className="w-3.5 h-3.5 text-indigo-600" />
-                    Request biweekly support (Public Link)
-                  </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                </button>
-                <p className="text-[10px] text-slate-400 leading-normal font-medium">
-                  *Form Links are public and accessible directly by recipients without sign-in to request funds & sign disbursement receipts on payment.
-                </p>
-              </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 text-left space-y-4">
+               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Recipient Form Links</span>
+               <button
+                 onClick={() => setShowPublicCreator(true)}
+                 className="w-full bg-white hover:bg-slate-50 p-4 border border-slate-200 rounded-2xl flex items-center justify-between group transition-all"
+               >
+                 <div className="flex items-center gap-3">
+                   <div className="w-8 h-8 rounded-xl bg-one-blue/5 text-one-blue flex items-center justify-center"><Link size={16}/></div>
+                   <span className="text-sm font-bold text-slate-900">Request Support (Public)</span>
+                 </div>
+                 <ChevronRight size={16} className="text-slate-300 group-hover:text-one-blue transition-colors" />
+               </button>
             </div>
 
-            {/* Elegant Tab Switcher to bypass Google OAuth Consent Screen issues */}
-            <div className="flex bg-slate-100 border border-slate-200/80 p-1 rounded-xl mx-auto w-full max-w-sm">
+            <div className="bg-slate-50 p-2 rounded-2xl flex border border-slate-100">
               <button
-                type="button"
-                onClick={() => { setActiveTab('google'); setBypassError(null); }}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'google'
-                    ? 'bg-white text-slate-900 border border-slate-200 shadow-xs font-bold'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
+                onClick={() => setActiveTab('google')}
+                className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeTab === 'google' ? 'bg-white shadow-md text-one-blue' : 'text-slate-400'}`}
               >
                 Google SSO
               </button>
               <button
-                type="button"
-                onClick={() => { setActiveTab('passcode'); setBypassError(null); }}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'passcode'
-                    ? 'bg-white text-slate-900 border border-slate-200 shadow-xs font-bold'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
+                onClick={() => setActiveTab('passcode')}
+                className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeTab === 'passcode' ? 'bg-white shadow-md text-one-blue' : 'text-slate-400'}`}
               >
-                Affiliate Bypass 🔑
+                Bypass 🔑
               </button>
             </div>
 
             {activeTab === 'google' ? (
-              /* Google Login Section */
-              <div className="space-y-4 animate-fadeIn">
-                <div className="pt-1">
-                  <button 
-                    onClick={handleLogin}
-                    disabled={isLoggingIn}
-                    className="w-full h-[40px] px-4 border border-slate-200 rounded-lg bg-white hover:bg-slate-50 flex items-center justify-center gap-3 cursor-pointer text-slate-700 font-sans font-medium text-sm transition-all shadow-xs active:scale-98"
-                  >
-                    <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="w-[18px] h-[18px] flex-shrink-0">
-                      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
-                      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
-                      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
-                      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
-                    </svg>
-                    <span>{isLoggingIn ? 'Establishing connection...' : 'Sign in with Google'}</span>
-                  </button>
-                </div>
-                <p className="text-[10px] text-slate-400 leading-relaxed text-center px-2 font-medium">
-                  *Standard OAuth. If Google blocks authorization with "verification required" 403 screen, use the <strong>"Affiliate Bypass"</strong> tab using the passcode linked to your account.
-                </p>
-              </div>
+              <Button onClick={handleLogin} disabled={isLoggingIn} size="lg" className="w-full h-16 text-lg">
+                {isLoggingIn ? <RefreshCw className="animate-spin mr-2" /> : <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6 mr-3 bg-white p-1 rounded" />}
+                {isLoggingIn ? 'Connecting...' : 'Continue with Google'}
+              </Button>
             ) : (
-              /* Passcode Login Form */
-              <form onSubmit={handleBypassLogin} className="space-y-4 text-left animate-fadeIn">
-                <div>
-                  <label className="block text-[10px] uppercase tracking-wider font-extrabold text-slate-400 mb-1">Registered Affiliate Email</label>
-                  <input
-                     type="email"
-                     required
-                     placeholder="name@gmail.com"
-                     value={bypassEmail}
-                     onChange={(e) => setBypassEmail(e.target.value)}
-                     className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none font-semibold text-slate-800 text-xs shadow-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] uppercase tracking-wider font-extrabold text-slate-400 mb-1">Bypass Access Passcode</label>
-                  <input
-                     type="password"
-                     required
-                     placeholder="e.g. MBW-4281"
-                     value={bypassCode}
-                     onChange={(e) => setBypassCode(e.target.value)}
-                     className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 outline-none font-mono font-bold text-slate-800 text-xs tracking-widest shadow-xs"
-                  />
-                </div>
-
-                {bypassError && (
-                  <div className="p-3 bg-rose-50 border border-rose-150 rounded-xl flex gap-2 items-center">
-                    <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0" />
-                    <p className="text-[10px] text-rose-600 font-bold leading-normal">{bypassError}</p>
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={isLoggingIn}
-                  className="w-full spline-btn-primary hover:scale-[1.01] active:scale-[0.99] disabled:bg-slate-300 text-white font-bold py-2.5 px-4 rounded-xl transition-all shadow-sm text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer mt-1"
-                >
-                  {isLoggingIn ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Authorizing Profile...
-                    </>
-                  ) : (
-                    <>
-                      <UserCheck className="w-4 h-4" /> Bypass Google Auth & Enter
-                    </>
-                  )}
-                </button>
+              <form onSubmit={handleBypassLogin} className="space-y-4 text-left">
+                <Input label="Email" type="email" value={bypassEmail} onChange={(e) => setBypassEmail(e.target.value)} required placeholder="name@gmail.com" />
+                <Input label="Passcode" type="password" value={bypassCode} onChange={(e) => setBypassCode(e.target.value)} required placeholder="••••••••" />
+                {bypassError && <p className="text-xs text-one-red font-bold text-center">{bypassError}</p>}
+                <Button type="submit" disabled={isLoggingIn} className="w-full h-16 text-lg mt-4">
+                  {isLoggingIn ? <RefreshCw className="animate-spin" /> : 'Enter Portal'}
+                </Button>
               </form>
             )}
 
-          </div>
+            <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] pt-4 leading-relaxed">
+              *Standard OAuth. If blocked, use the <strong>Bypass</strong> tab with your account passcode.
+            </p>
+          </Card>
         </div>
       )}
-
     </div>
+  );
+}
+
+function SidebarItem({ active, icon, label, onClick }: { active?: boolean, icon: React.ReactNode, label: string, onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`
+        w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-bold text-sm transition-all text-left
+        ${active ? 'bg-one-blue text-white shadow-lg shadow-one-blue/20' : 'text-white/50 hover:bg-white/10 hover:text-white'}
+      `}
+    >
+      <span className={active ? 'text-white' : 'text-white/30'}>{icon}</span>
+      {label}
+    </button>
   );
 }
