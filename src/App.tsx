@@ -105,15 +105,6 @@ export default function App() {
     try {
       const userEmail = currentUser.email?.toLowerCase().trim() || '';
 
-      // Silent cleanup code for muyepreston@gmail.com
-      try {
-        const cleanupQuery = query(collection(db, 'users'), where('email', '==', 'muyepreston@gmail.com'));
-        const cleanupSnap = await getDocs(cleanupQuery);
-        for (const cleanupDoc of cleanupSnap.docs) {
-          await deleteDoc(doc(db, 'users', cleanupDoc.id));
-        }
-      } catch (err) {}
-
       const docRef = doc(db, 'users', currentUser.uid);
       const docSnap = await getDoc(docRef);
 
