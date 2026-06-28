@@ -47,6 +47,7 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editRole, setEditRole] = useState<UserRole>('reseller');
   const [editArea, setEditArea] = useState<CoastArea>('Mombasa');
+  const [editPassword, setEditPassword] = useState('');
 
   // Direct Task Assignment State
   const [taskReseller, setTaskReseller] = useState('');
@@ -85,13 +86,22 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
     setLoading(true);
     setError(null);
     try {
-      await updateDoc(doc(db, 'users', uid), {
+      const updateData: any = {
         displayName: editDisplayName, 
         role: editRole, 
         area: editRole === 'reseller' ? editArea : null
-      });
+      };
+      
+      // Only update password if it was changed
+      if (editPassword.trim()) {
+        updateData.password = editPassword.trim();
+        console.log("[v0] Updating password for user:", uid, "New password:", editPassword);
+      }
+      
+      await updateDoc(doc(db, 'users', uid), updateData);
       setSuccess(`Profile updated!`);
-      setEditingProfileId(null); 
+      setEditingProfileId(null);
+      setEditPassword('');
       await fetchAdminData();
     } catch (err) {
       console.error('Update profile error:', err);
@@ -481,7 +491,17 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
                          </select>
                        ) : (p.area || 'Global')}
                     </td>
-                    <td className="px-4 py-5 font-mono text-one-indigo font-black text-xs">{p.password || '—'}</td>
+                    <td className="px-4 py-5 font-mono text-one-indigo font-black text-xs">
+                      {isEditing ? (
+                        <input 
+                          type="text" 
+                          className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono font-black" 
+                          value={editPassword} 
+                          onChange={(e)=>setEditPassword(e.target.value)}
+                          placeholder={p.password || 'Enter new passcode'}
+                        />
+                      ) : (p.password || '—')}
+                    </td>
                     <td className="px-8 py-5 text-right flex justify-end gap-2">
                       {isEditing ? (
                         <>
@@ -490,7 +510,7 @@ export default function AdminView({ onSpreadsheetCreated, savedSpreadsheetId }: 
                         </>
                       ) : (
                         <>
-                          <button onClick={()=>{setEditingProfileId(p.uid); setEditDisplayName(p.displayName); setEditRole(p.role); setEditArea(p.area||'Mombasa');}} className="p-2 text-slate-300 hover:text-one-blue transition-colors"><Edit size={16}/></button>
+                          <button onClick={()=>{setEditingProfileId(p.uid); setEditDisplayName(p.displayName); setEditRole(p.role); setEditArea(p.area||'Mombasa'); setEditPassword('');}} className="p-2 text-slate-300 hover:text-one-blue transition-colors"><Edit size={16}/></button>
                           <button onClick={()=>handleDeleteProfile(p.uid, p.displayName)} className="p-2 text-slate-300 hover:text-one-red transition-colors"><Trash2 size={16}/></button>
                         </>
                       )}
