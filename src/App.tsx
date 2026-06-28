@@ -192,7 +192,22 @@ export default function App() {
       }
 
       const userData = snap.docs[0].data() as UserProfile;
-      if (userData.password?.trim() !== bypassCode.trim()) {
+      
+      // Debug logging
+      console.log("[v0] Bypass validation - Email:", bypassEmail);
+      console.log("[v0] Bypass validation - Stored password exists:", !!userData.password);
+      console.log("[v0] Bypass validation - Input code:", bypassCode);
+      console.log("[v0] Bypass validation - Stored password:", userData.password);
+      
+      // Normalize both strings for comparison
+      const storedPassword = String(userData.password || '').trim();
+      const inputPassword = bypassCode.trim();
+      
+      console.log("[v0] Bypass validation - Normalized stored:", storedPassword);
+      console.log("[v0] Bypass validation - Normalized input:", inputPassword);
+      console.log("[v0] Bypass validation - Match result:", storedPassword === inputPassword);
+      
+      if (storedPassword !== inputPassword) {
         setBypassError('Invalid passcode.');
         return;
       }
@@ -210,7 +225,9 @@ export default function App() {
       setUser(mockUser);
       setProfile(userData);
       setSimulatedRole(userData.role);
+      console.log("[v0] Bypass login successful for:", userData.email);
     } catch (err) {
+      console.error("[v0] Bypass login error:", err);
       setBypassError('Auth failed.');
     } finally {
       setIsLoggingIn(false);
